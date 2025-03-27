@@ -16,6 +16,11 @@ public class CharController {
         this.chatModel = chatModel;
     }
 
+    @GetMapping
+    public String getChar() {
+        return "Hello World";
+    }
+
     @GetMapping("/chat")
     public String prompt(@RequestParam String m){
         return chatModel.call(m);
