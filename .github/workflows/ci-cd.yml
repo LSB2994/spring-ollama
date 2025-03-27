@@ -3,28 +3,28 @@ name: LLAMA CI/CD Pipeline
 on:
   push:
     branches:
-      - develop
+      - develop  # Trigger on pushes to the 'develop' branch
     paths-ignore:
-      - '**.md'
+      - '**.md'  # Ignore markdown files
       - '.gitignore'
-      - 'docs/**'
+      - 'docs/**'  # Ignore docs folder
 
 env:
   JAVA_VERSION: '21'
   APP_NAME: "spring-ollama"
-  BACKUP_DIR: "/home/kosign/backups/tomcat"
-  MAX_BACKUPS: 5  # Number of backups to keep
-  SERVER_HOST: "172.27.184.67"
-  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_TO }}
+  BACKUP_DIR: "/home/kosign/backups/tomcat"  # Backup directory for JAR files
+  MAX_BACKUPS: 5  # Max number of backups to retain
+  SERVER_HOST: "172.27.184.67"  # IP address of the remote server
+  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}  # Telegram bot token for notifications
+  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_TO }}  # Chat ID for Telegram notifications
 
 jobs:
   build-and-deploy:
-    runs-on: self-hosted
+    runs-on: self-hosted  # Use a self-hosted runner
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v3  # Checkout the repository code
 
       - name: Send deployment start notification
         run: |
@@ -57,7 +57,7 @@ jobs:
       - name: Build application
         run: |
           chmod +x ./gradlew
-          ./gradlew build -x test
+          ./gradlew build -x test  # Build the application excluding tests
 
       - name: Find JAR file
         id: find-jar
@@ -90,15 +90,9 @@ jobs:
 
       - name: Deploy to Server (JAR)
         run: |
-          # Create deployment directory
-          ssh lsb@${{ env.SERVER_HOST }} "mkdir -p /home/lsb/deployments"
-          
-          # Stop application if running
-          ssh lsb@${{ env.SERVER_HOST }} "pkill -f spring-ollama || true"
-          
-          # Copy the JAR file to the remote server
+          ssh lsb@${{ env.SERVER_HOST }} "mkdir -p /home/lsb/deployments"  # Ensure deployment directory exists
+          ssh lsb@${{ env.SERVER_HOST }} "pkill -f spring-ollama || true"  # Stop the application if it's running
           scp ${{ steps.find-jar.outputs.jar_file }} lsb@${{ env.SERVER_HOST }}:/home/lsb/deployments/spring-ollama.jar
-          
           echo "JAR file deployed to /home/lsb/deployments/spring-ollama.jar"
 
       - name: Start the application on remote server
@@ -111,7 +105,6 @@ jobs:
           echo "Waiting for deployment to initialize..."
           sleep 30  # Give time for the app to start
           
-          # Check the health endpoint
           HEALTH_URL="http://${{ env.SERVER_HOST }}:8080/actuator/health"
           echo "Checking health endpoint at $HEALTH_URL"
           
