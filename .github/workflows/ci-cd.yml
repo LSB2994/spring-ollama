@@ -185,35 +185,3 @@ jobs:
           disable_web_page_preview= $true
           }
 
-cleanup:
-  runs-on: self-hosted
-  needs: build-and-deploy
-  if: always()
-
-  steps:
-    - name: Cleanup old backups
-      shell: pwsh
-      run: |
-        $backups = Get-ChildItem -Path $env:BACKUP_DIR -Filter "${env:APP_NAME}_backup_*.jar" | 
-                    Sort-Object LastWriteTime -Descending
-        
-        if ($backups.Count -gt $env:MAX_BACKUPS) {
-            $toRemove = $backups.Count - $env:MAX_BACKUPS
-            $backups | Select-Object -Last $toRemove | Remove-Item -Force
-            Write-Host "Removed $toRemove old backup(s), keeping $env:MAX_BACKUPS most recent"
-        } else {
-            Write-Host "Found $($backups.Count) backup(s), no cleanup needed (max $env:MAX_BACKUPS)"
-        }
-
-    - name: Clean build artifacts
-      shell: pwsh
-      run: |
-        Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter "*.jar" -Recurse | 
-          Remove-Item -Force -ErrorAction SilentlyContinue
-        
-        if ($IsLinux) {
-            ./gradlew clean
-        } else {
-            .\gradlew.bat clean
-        }
-        Write-Host "Cleaned up build artifacts"
