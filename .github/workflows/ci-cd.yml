@@ -67,12 +67,8 @@ jobs:
 
       - name: Build application
         run: |
-          if ($env:OS -eq "Windows_NT") {
-            echo "Skipping chmod on Windows"
-          } else {
-            chmod +x ./gradlew  # Only run chmod on Linux/macOS
-          }
-          ./gradlew build -x test  # Build the application excluding tests
+          chmod +x ./gradlew
+          ./gradlew build -x test
 
       - name: Find JAR file
         id: find-jar
