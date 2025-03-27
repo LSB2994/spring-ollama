@@ -60,9 +60,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          echo "JAVA_HOME=C:\Program Files\Java\jdk-${{ env.JAVA_VERSION }}" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $java_home = "C:\Program Files\Java\jdk-21"  # Update this path if necessary
+          echo "JAVA_HOME=$java_home" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "TIMESTAMP=$(Get-Date -Format 'yyyyMMdd_HHmmss')" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "PATH=$env:JAVA_HOME\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "PATH=$java_home\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build application
         run: |
