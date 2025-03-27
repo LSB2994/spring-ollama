@@ -1,4 +1,4 @@
-name: HRMS CI/CD Pipeline
+name: LLAMA CI/CD Pipeline
 
 on:
   push:
@@ -146,7 +146,7 @@ jobs:
           APP_URL="http://${{ env.SERVER_HOST }}:8080/swagger-ui/index.html#"
           BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           
-          MESSAGE="✅ *OLLAMA DEPLOYMENT SUCCESSFUL*%0A%0A"
+          MESSAGE="✅ *LLAMA DEPLOYMENT SUCCESSFUL*%0A%0A"
           MESSAGE+="*Branch:* \`${BRANCH}\`%0A"
           MESSAGE+="*Deployed at:* ${DEPLOY_TIME}%0A"
           MESSAGE+="*Application URL:* [Open App](${APP_URL})%0A"
