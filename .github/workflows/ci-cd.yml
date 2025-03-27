@@ -3,190 +3,196 @@ name: LLAMA CI/CD Pipeline
 on:
   push:
     branches:
-      - develop  # Trigger on pushes to the 'develop' branch
+      - develop
     paths-ignore:
-      - '**.md'  # Ignore markdown files
+      - '**.md'
       - '.gitignore'
-      - 'docs/**'  # Ignore docs folder
+      - 'docs/**'
 
 env:
   JAVA_VERSION: '21'
   APP_NAME: "spring-ollama"
-  BACKUP_DIR: "C:\kosign\backups\tomcat"  # Backup directory for JAR files
-  MAX_BACKUPS: 5  # Max number of backups to retain
-  SERVER_HOST: "172.27.184.67"  # IP address of the remote server
-  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}  # Telegram bot token for notifications
-  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_TO }}  # Chat ID for Telegram notifications
+  BACKUP_DIR: "/home/kosign/backups/tomcat"
+  MAX_BACKUPS: 5
+  SERVER_HOST: "172.27.184.67"
+  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_TO }}
 
 jobs:
   build-and-deploy:
-    runs-on: self-hosted  # Use a self-hosted runner
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3  # Checkout the repository code
+        uses: actions/checkout@v3
 
       - name: Send deployment start notification
-        shell: powershell
+        shell: pwsh
         run: |
-          $Branch = $Env:GITHUB_REF -replace 'refs/heads/', ''
-          $CommitMsg = git log -1 --pretty=%B
+          $Branch = $env:GITHUB_REF -replace 'refs/heads/', ''
+          $CommitMsg = (git log -1 --pretty=%B).Trim()
           $CommitAuthor = git log -1 --pretty=%an
-          $BuildUrl = "${Env:GITHUB_SERVER_URL}/${Env:GITHUB_REPOSITORY}/actions/runs/${Env:GITHUB_RUN_ID}"
-          $Env:TZ="Asia/Phnom_Penh"
+          $BuildUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $env:TZ = "Asia/Phnom_Penh"
 
-          $Message = "🚀 *HRMS DEPLOYMENT STARTED*%0A%0A"
-          $Message += "*Branch:* `{$Branch}`%0A"
-          $Message += "*Commit:* `{$CommitMsg}`%0A"
-          $Message += "*Author:* {$CommitAuthor}%0A"
-          $Message += "*Build:* [View Details]({$BuildUrl})%0A"
-          $Message += "*Started at:* $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')%0A%0A"
-          $Message += "_Deployment in progress..._"
+          $Message = @"
+  🚀 *HRMS DEPLOYMENT STARTED*%0A%0A
+  *Branch:* `$Branch`%0A
+  *Commit:* `$CommitMsg`%0A
+  *Author:* $CommitAuthor%0A
+  *Build:* [View Details]($BuildUrl)%0A
+  *Started at:* $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')%0A%0A
+  _Deployment in progress..._
+  "@
 
-          Invoke-RestMethod -Uri "https://api.telegram.org/bot${Env:TELEGRAM_TOKEN}/sendMessage" -Method Post -Body @{
-              chat_id = $Env:TELEGRAM_CHAT_ID
-              text = $Message
-              parse_mode = "Markdown"
-              disable_web_page_preview = $true
-          }
+          Invoke-RestMethod -Uri "https://api.telegram.org/bot$env:TELEGRAM_TOKEN/sendMessage" `
+  -Method Post -Body @{
+  chat_id = $env:TELEGRAM_CHAT_ID
+  text = $Message
+  parse_mode = "Markdown"
+  disable_web_page_preview = $true
+  }
 
-      - name: Set up environment (Windows)
-        shell: powershell
-        run: |
-          echo "JAVA_HOME=C:\Program Files\Java\jdk-${{ env.JAVA_VERSION }}" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "TIMESTAMP=$(Get-Date -Format 'yyyyMMdd_HHmmss')" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "PATH=$env:JAVA_HOME\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+- name: Set up environment
+  shell: pwsh
+  run: |
+    "JAVA_HOME=/usr/bin/java" | Out-File -FilePath $env:GITHUB_ENV -Append
+    "TIMESTAMP=$(Get-Date -Format 'yyyyMMdd_HHmmss')" | Out-File -FilePath $env:GITHUB_ENV -Append
+    "PATH=$env:JAVA_HOME/bin:$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Build application
-        shell: powershell
-        run: |
-          ./gradlew build -x test
+- name: Build application
+  shell: pwsh
+  run: |
+    ./gradlew build -x test
 
-      - name: Find JAR file
-        shell: powershell
-        id: find-jar
-        run: |
-          $JAR_FILE = Get-ChildItem -Path "$GITHUB_WORKSPACE\build\libs" -Filter "*.jar" | Select-Object -First 1
-          if ($null -eq $JAR_FILE) {
-            Write-Error "No JAR file found in build/libs directory"
-            exit 1
-          }
-          echo "jar_file=$JAR_FILE" >> $env:GITHUB_ENV
-          echo "Found JAR file: $JAR_FILE"
+- name: Find JAR file
+  id: find-jar
+  shell: pwsh
+  run: |
+    $jarFile = Get-ChildItem -Path ./build/libs -Filter *.jar -File | Select-Object -First 1
+    if (-not $jarFile) {
+        Write-Error "::error::No JAR file found in build/libs directory"
+        exit 1
+    }
+    "jar_file=$($jarFile.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Create backup directory
-        shell: powershell
-        run: |
-          New-Item -Path $BACKUP_DIR -ItemType Directory -Force
-          echo "Created backup directory at $BACKUP_DIR"
+- name: Create backup directory
+  shell: pwsh
+  run: |
+    New-Item -ItemType Directory -Force -Path $env:BACKUP_DIR | Out-Null
 
-      - name: Backup existing deployment
-        shell: powershell
-        run: |
-          $BackupFile = "$BACKUP_DIR\$APP_NAME.jar"
-          if (Test-Path $BackupFile) {
-            $BackupFileWithTimestamp = "$BACKUP_DIR\${APP_NAME}_backup_$TIMESTAMP.jar"
-            Copy-Item $BackupFile -Destination $BackupFileWithTimestamp -Force
-            echo "Backed up current JAR to $BackupFileWithTimestamp"
-          } else {
-            echo "No existing JAR file to backup"
-          }
+- name: Backup existing deployment
+  shell: pwsh
+  run: |
+    $sourcePath = "$env:BACKUP_DIR/$env:APP_NAME.jar"
+    if (Test-Path $sourcePath) {
+        $backupFile = "$env:BACKUP_DIR/${env:APP_NAME}_backup_$env:TIMESTAMP.jar"
+        Copy-Item -Path $sourcePath -Destination $backupFile
+        "backup_file=$backupFile" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "has_backup=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+    } else {
+        "has_backup=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+    }
 
-      - name: Deploy to Server (JAR)
-        shell: powershell
-        run: |
-          ssh lsb@${{ env.SERVER_HOST }} "mkdir -p /home/lsb/deployments"  # Ensure deployment directory exists
-          ssh lsb@${{ env.SERVER_HOST }} "pkill -f spring-ollama || true"  # Stop the application if it's running
-          scp ${{ steps.find-jar.outputs.jar_file }} lsb@${{ env.SERVER_HOST }}:/home/lsb/deployments/spring-ollama.jar
-          echo "JAR file deployed to /home/lsb/deployments/spring-ollama.jar"
+- name: Deploy to Server (JAR)
+  shell: pwsh
+  run: |
+    ssh lsb@$env:SERVER_HOST "mkdir -p /home/lsb/deployments"
+    ssh lsb@$env:SERVER_HOST "pkill -f spring-ollama || true"
+    scp ${{ steps.find-jar.outputs.jar_file }} lsb@$env:SERVER_HOST:/home/lsb/deployments/spring-ollama.jar
 
-      - name: Start the application on remote server
-        shell: powershell
-        run: |
-          ssh lsb@${{ env.SERVER_HOST }} "nohup java -jar /home/lsb/deployments/spring-ollama.jar &"
-          echo "Started the application remotely"
+- name: Start the application on remote server
+  shell: pwsh
+  run: |
+    ssh lsb@$env:SERVER_HOST "nohup java -jar /home/lsb/deployments/spring-ollama.jar > /dev/null 2>&1 &"
 
-      - name: Verify deployment
-        shell: powershell
-        run: |
-          echo "Waiting for deployment to initialize..."
-          Start-Sleep -Seconds 30  # Give time for the app to start
-          
-          $HealthUrl = "http://${{ env.SERVER_HOST }}:8080/actuator/health"
-          echo "Checking health endpoint at $HealthUrl"
-          
-          $MaxRetries = 6
-          $RetryInterval = 10  # In seconds
-          $Success = $false
-          
-          for ($i = 1; $i -le $MaxRetries; $i++) {
-            $HealthStatus = (Invoke-WebRequest -Uri $HealthUrl -Method Get -UseBasicP) -as [string]
-            if ($HealthStatus -match "200") {
-              $AppStatus = ($HealthStatus | Select-String -Pattern '"status":"([^"]+)"').Matches.Groups[1].Value
-              if ($AppStatus -eq "UP") {
-                Write-Host "✅ Application health check successful - Status: UP"
-                $Success = $true
-                break
-              } else {
-                Write-Host "⚠️ Application responded but status is not UP: $AppStatus"
-              }
-            } else {
-              Write-Host "Health check returned HTTP $HealthStatus (Attempt $i/$MaxRetries), retrying in $RetryInterval seconds..."
-              Start-Sleep -Seconds $RetryInterval
+- name: Verify deployment
+  shell: pwsh
+  run: |
+    $healthUrl = "http://$env:SERVER_HOST:8080/actuator/health"
+    $success = $false
+    
+    Write-Host "Waiting for deployment to initialize..."
+    Start-Sleep -Seconds 30
+    
+    for ($i = 1; $i -le 6; $i++) {
+        try {
+            $response = Invoke-WebRequest -Uri $healthUrl -SkipCertificateCheck -ErrorAction Stop
+            if ($response.StatusCode -eq 200) {
+                $content = $response.Content | ConvertFrom-Json
+                if ($content.status -eq "UP") {
+                    Write-Host "✅ Application health check successful - Status: UP"
+                    $success = $true
+                    break
+                } else {
+                    Write-Host "⚠️ Application status: $($content.status)"
+                }
             }
-          }
-          
-          if (-not $Success) {
-            Write-Warning "Health check failed after multiple attempts"
-            exit 1
-          }
+        } catch {
+            Write-Host "Health check attempt $i failed: $($_.Exception.Message)"
+        }
+    
+        if ($i -lt 6) {
+            Write-Host "Retrying in 10 seconds..."
+            Start-Sleep -Seconds 10
+        }
+    }
+    
+    if (-not $success) {
+        Write-Host "::warning::Health check failed after multiple attempts"
+        "success=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        exit 1
+    }
 
-      - name: Send success notification
-        if: success()
-        shell: powershell
-        run: |
-          $Branch = $Env:GITHUB_REF -replace 'refs/heads/', ''
-          $DeployTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-          $AppUrl = "http://${{ env.SERVER_HOST }}:8080/swagger-ui/index.html#"
-          $BuildUrl = "${Env:GITHUB_SERVER_URL}/${Env:GITHUB_REPOSITORY}/actions/runs/${Env:GITHUB_RUN_ID}"
+- name: Send success notification
+  if: success()
+  shell: pwsh
+  run: |
+    $env:TZ = "Asia/Phnom_Penh"
+    $branch = $env:GITHUB_REF -replace 'refs/heads/', ''
+    $deployTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $appUrl = "http://$env:SERVER_HOST:8080/swagger-ui/index.html#"
+    $buildUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+    
+    $message = @"
+  ✅ *LLAMA DEPLOYMENT SUCCESSFUL*%0A%0A
+  *Branch:* `$branch`%0A
+  *Deployed at:* $deployTime%0A
+  *Application URL:* [Open App]($appUrl)%0A
+  *Build Details:* [View Log]($buildUrl)%0A%0A
+  ✨ _Deployment completed successfully!_
+  "@
 
-          $Message = "✅ *LLAMA DEPLOYMENT SUCCESSFUL*%0A%0A"
-          $Message += "*Branch:* `${Branch}`%0A"
-          $Message += "*Deployed at:* $DeployTime%0A"
-          $Message += "*Application URL:* [Open App]($AppUrl)%0A"
-          $Message += "*Build Details:* [View Log]($BuildUrl)%0A%0A"
-          $Message += "✨ _Deployment completed successfully!_"
+          Invoke-RestMethod -Uri "https://api.telegram.org/bot$env:TELEGRAM_TOKEN/sendMessage" `
+  -Method Post -Body @{
+  chat_id = $env:TELEGRAM_CHAT_ID
+  text = $message
+  parse_mode = "Markdown"
+  disable_web_page_preview = $true
+  }
 
-          Invoke-RestMethod -Uri "https://api.telegram.org/bot${Env:TELEGRAM_TOKEN}/sendMessage" -Method Post -Body @{
-              chat_id = $Env:TELEGRAM_CHAT_ID
-              text = $Message
-              parse_mode = "Markdown"
-              disable_web_page_preview = $true
-          }
+cleanup:
+  runs-on: self-hosted
+  needs: build-and-deploy
+  if: always()
 
-  cleanup:
-    runs-on: self-hosted
-    needs: build-and-deploy
-    if: always()
+  steps:
+    - name: Cleanup old backups
+      shell: pwsh
+      run: |
+        $backups = Get-ChildItem -Path $env:BACKUP_DIR -Filter "${env:APP_NAME}_backup_*.jar" | 
+                    Sort-Object LastWriteTime -Descending
+        
+        if ($backups.Count -gt $env:MAX_BACKUPS) {
+            $toRemove = $backups.Count - $env:MAX_BACKUPS
+            $backups | Select-Object -Last $toRemove | Remove-Item -Force
+            Write-Host "Removed $toRemove old backup(s)"
+        } else {
+            Write-Host "No cleanup needed - $($backups.Count) backups found"
+        }
 
-    steps:
-      - name: Cleanup old backups
-        shell: powershell
-        run: |
-          $BackupCount = (Get-ChildItem -Path $BACKUP_DIR -Filter "${APP_NAME}_backup_*.jar").Count
-          
-          if ($BackupCount -gt $MAX_BACKUPS) {
-            $RemoveCount = $BackupCount - $MAX_BACKUPS
-            $FilesToRemove = Get-ChildItem -Path $BACKUP_DIR -Filter "${APP_NAME}_backup_*.jar" | Sort-Object LastWriteTime | Select-Object -First $RemoveCount
-            $FilesToRemove | Remove-Item -Force
-            Write-Host "Removed $RemoveCount old backup(s), keeping the $MAX_BACKUPS most recent"
-          } else {
-            Write-Host "Found $BackupCount backup(s), no cleanup needed (keeping max $MAX_BACKUPS)"
-          }
-
-      - name: Clean build artifacts
-        shell: powershell
-        run: |
-          Get-ChildItem -Path $GITHUB_WORKSPACE -Filter "*.jar" | Remove-Item -Force
-          ./gradlew clean || true
-          Write-Host "Cleaned up build artifacts"
+    - name: Clean build artifacts
+      shell: pwsh
+      run: |
+        Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter *.jar -Recurse | Remove-Item -Force
+        ./gradlew clean
