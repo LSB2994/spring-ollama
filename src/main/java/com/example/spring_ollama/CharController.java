@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 @CrossOrigin
 public class CharController {
 
+
     private final ChatModel chatModel;
 
     public CharController(ChatModel chatModel) {
