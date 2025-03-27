@@ -67,7 +67,7 @@ jobs:
 
       - name: Build application
         run: |
-#          chmod +x ./gradlew
+          chmod +x ./gradlew
           ./gradlew build -x test  # Build the application excluding tests
 
       - name: Find JAR file
