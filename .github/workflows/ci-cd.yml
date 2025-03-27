@@ -52,7 +52,7 @@ jobs:
       - name: Set up environment (Linux)
         if: runner.os == 'Linux'
         run: |
-          echo "JAVA_HOME=/usr/lib/jvm/java-${{ env.JAVA_VERSION }}-openjdk-amd64" >> $GITHUB_ENV
+          echo "JAVA_HOME=/usr/bin/java-${{ env.JAVA_VERSION }}-openjdk-amd64" >> $GITHUB_ENV
           echo "TIMESTAMP=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_ENV
           echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
 
