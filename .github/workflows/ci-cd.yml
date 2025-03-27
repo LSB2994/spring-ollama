@@ -10,13 +10,13 @@ on:
       - 'docs/**'
 
 env:
-  JAVA_VERSION: '21'
-  APP_NAME: "spring-ollama"
-  BACKUP_DIR: "/home/kosign/backups/tomcat"
-  MAX_BACKUPS: 5
-  SERVER_HOST: "172.27.184.67"
-  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_TO }}
+  JAVA_VERSION:       '21'
+  APP_NAME:          "spring-ollama"
+  BACKUP_DIR:        "/home/kosign/backups/tomcat"
+  MAX_BACKUPS:       5
+  SERVER_HOST:       "172.27.184.67"
+  TELEGRAM_TOKEN:    ${{ secrets.TELEGRAM_TOKEN }}
+  TELEGRAM_CHAT_ID:  ${{ secrets.TELEGRAM_TO }}
 
 jobs:
   build-and-deploy:
@@ -29,37 +29,38 @@ jobs:
       - name: Send deployment start notification
         shell: pwsh
         run: |
-          $Branch = $env:GITHUB_REF -replace 'refs/heads/', ''
-          $CommitMsg = (git log -1 --pretty=%B).Trim()
-          $CommitAuthor = git log -1 --pretty=%an
-          $BuildUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-          $env:TZ = "Asia/Phnom_Penh"
+          $Branch      = $env:GITHUB_REF -replace 'refs/heads/', ''
+          $CommitMsg   = (git log -1 --pretty=%B).Trim()
+          $CommitAuthor= git log -1 --pretty=%an
+          $BuildUrl    = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $env:TZ      = "Asia/Phnom_Penh"
 
           $Message = @"
           🚀 *HRMS DEPLOYMENT STARTED*%0A%0A
-          *Branch:* `$Branch`%0A
-          *Commit:* `$CommitMsg`%0A
-          *Author:* $CommitAuthor%0A
-          *Build:* [View Details]($BuildUrl)%0A
-          *Started at:* $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')%0A%0A
+          *Branch:*   `$Branch`%0A
+          *Commit:*   `$CommitMsg`%0A
+          *Author:*   $CommitAuthor%0A
+          *Build:*    [View Details]($BuildUrl)%0A
+          *Started:*  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')%0A%0A
           _Deployment in progress..._
           "@
 
           Invoke-RestMethod -Uri "https://api.telegram.org/bot$env:TELEGRAM_TOKEN/sendMessage" `
           -Method Post -Body @{
-          chat_id = $env:TELEGRAM_CHAT_ID
-          text = $Message
-          parse_mode = "Markdown"
-          disable_web_page_preview = $true
-        }
+          chat_id                 = $env:TELEGRAM_CHAT_ID
+          text                   = $Message
+          parse_mode             = "Markdown"
+          disable_web_page_preview= $true
+          }
 
       - name: Set up environment
         shell: pwsh
         run: |
-          $javaPath = if ($IsLinux) { "/usr/lib/java-$env:JAVA_VERSION-openjdk-amd64/bin/java" } else { "$env:JAVA_HOME\bin\java" }
-          "JAVA_HOME=$javaPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $javaPath = if ($IsLinux) { "/usr/lib/java-$env:JAVA_VERSION-openjdk-amd64/bin/java" } 
+                      else { "$env:JAVA_HOME\bin\java" }
+          "JAVA_HOME=$javaPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
           "TIMESTAMP=$(Get-Date -Format 'yyyyMMdd_HHmmss')" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "PATH=$javaPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PATH=$javaPath;$env:PATH"  | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build application
         shell: pwsh
@@ -75,7 +76,8 @@ jobs:
         id: find-jar
         shell: pwsh
         run: |
-          $jarFile = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/libs" -Filter "*.jar" -File | Select-Object -First 1
+          $jarFile = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/libs" -Filter "*.jar" -File | 
+                     Select-Object -First 1
           if (-not $jarFile) {
               Write-Error "::error::No JAR file found in build/libs directory"
               exit 1
@@ -97,10 +99,10 @@ jobs:
               $backupFile = "$env:BACKUP_DIR/${env:APP_NAME}_backup_$env:TIMESTAMP.jar"
               Copy-Item -Path $sourcePath -Destination $backupFile
               "backup_file=$backupFile" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-              "has_backup=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              "has_backup=true"          | Out-File -FilePath $env:GITHUB_OUTPUT -Append
               Write-Host "Backed up current JAR to $backupFile"
           } else {
-              "has_backup=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              "has_backup=false"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
               Write-Host "No existing JAR file to backup"
           }
 
@@ -125,7 +127,7 @@ jobs:
           Start-Sleep -Seconds 30
           
           $healthUrl = "http://$env:SERVER_HOST:8080/actuator/health"
-          $success = $false
+          $success   = $false
           
           for ($i = 1; $i -le 6; $i++) {
               try {
@@ -160,56 +162,58 @@ jobs:
         if: success()
         shell: pwsh
         run: |
-          $env:TZ = "Asia/Phnom_Penh"
-          $branch = $env:GITHUB_REF -replace 'refs/heads/', ''
+          $env:TZ      = "Asia/Phnom_Penh"
+          $branch      = $env:GITHUB_REF -replace 'refs/heads/', ''
           $deployTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-          $appUrl = "http://$env:SERVER_HOST:8080/swagger-ui/index.html#"
-          $buildUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $appUrl     = "http://$env:SERVER_HOST:8080/swagger-ui/index.html#"
+          $buildUrl    = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           
-          $message = @"
+            $message = @"
           ✅ *LLAMA DEPLOYMENT SUCCESSFUL*%0A%0A
-          *Branch:* `$branch`%0A
-          *Deployed at:* $deployTime%0A
-          *Application URL:* [Open App]($appUrl)%0A
-          *Build Details:* [View Log]($buildUrl)%0A%0A
+          *Branch:*   `$branch`%0A
+          *Deployed:* $deployTime%0A
+          *App URL:*  [Open App]($appUrl)%0A
+          *Build:*    [View Log]($buildUrl)%0A%0A
           ✨ _Deployment completed successfully!_
           "@
-      
-                Invoke-RestMethod -Uri "https://api.telegram.org/bot$env:TELEGRAM_TOKEN/sendMessage" `
-              -Method Post -Body @{
-              chat_id = $env:TELEGRAM_CHAT_ID
-              text = $message
-              parse_mode = "Markdown"
-              disable_web_page_preview = $true
-            }
-
-  cleanup:
-    runs-on: self-hosted
-    needs: build-and-deploy
-    if: always()
-
-    steps:
-      - name: Cleanup old backups
-        shell: pwsh
-        run: |
-          $backups = Get-ChildItem -Path $env:BACKUP_DIR -Filter "${env:APP_NAME}_backup_*.jar" | 
-                      Sort-Object LastWriteTime -Descending
-          
-          if ($backups.Count -gt $env:MAX_BACKUPS) {
-              $toRemove = $backups.Count - $env:MAX_BACKUPS
-              $backups | Select-Object -Last $toRemove | Remove-Item -Force
-              Write-Host "Removed $toRemove old backup(s), keeping the $env:MAX_BACKUPS most recent"
-          } else {
-              Write-Host "Found $($backups.Count) backup(s), no cleanup needed (keeping max $env:MAX_BACKUPS)"
+        
+                  Invoke-RestMethod -Uri "https://api.telegram.org/bot$env:TELEGRAM_TOKEN/sendMessage" `
+          -Method Post -Body @{
+          chat_id                 = $env:TELEGRAM_CHAT_ID
+          text                   = $message
+          parse_mode             = "Markdown"
+          disable_web_page_preview= $true
           }
 
-      - name: Clean build artifacts
-        shell: pwsh
-        run: |
-          Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter "*.jar" -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue
-          if ($IsLinux) {
-              ./gradlew clean
-          } else {
-              .\gradlew.bat clean
-          }
-          Write-Host "Cleaned up build artifacts"
+cleanup:
+  runs-on: self-hosted
+  needs: build-and-deploy
+  if: always()
+
+  steps:
+    - name: Cleanup old backups
+      shell: pwsh
+      run: |
+        $backups = Get-ChildItem -Path $env:BACKUP_DIR -Filter "${env:APP_NAME}_backup_*.jar" | 
+                    Sort-Object LastWriteTime -Descending
+        
+        if ($backups.Count -gt $env:MAX_BACKUPS) {
+            $toRemove = $backups.Count - $env:MAX_BACKUPS
+            $backups | Select-Object -Last $toRemove | Remove-Item -Force
+            Write-Host "Removed $toRemove old backup(s), keeping $env:MAX_BACKUPS most recent"
+        } else {
+            Write-Host "Found $($backups.Count) backup(s), no cleanup needed (max $env:MAX_BACKUPS)"
+        }
+
+    - name: Clean build artifacts
+      shell: pwsh
+      run: |
+        Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter "*.jar" -Recurse | 
+          Remove-Item -Force -ErrorAction SilentlyContinue
+        
+        if ($IsLinux) {
+            ./gradlew clean
+        } else {
+            .\gradlew.bat clean
+        }
+        Write-Host "Cleaned up build artifacts"
