@@ -67,7 +67,11 @@ jobs:
 
       - name: Build application
         run: |
-          chmod +x ./gradlew
+          if [ "$(uname)" != "Darwin" ] && [ "$(uname)" != "Linux" ]; then
+            echo "Skipping chmod on Windows"
+          else
+            chmod +x ./gradlew  # Only run chmod on Linux/macOS
+          fi
           ./gradlew build -x test  # Build the application excluding tests
 
       - name: Find JAR file
