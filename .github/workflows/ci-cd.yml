@@ -56,11 +56,16 @@ jobs:
           echo "TIMESTAMP=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_ENV
           echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
 
+      - name: Check Java installation
+        run: |
+          java -version
+          echo $JAVA_HOME
+
       - name: Set up environment (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $java_home = "C:\Program Files\Java\jdk-21"  # Update this path if necessary
+          $java_home = '"C:\Program Files\Java\jdk-21"'  # Enclose the path in double quotes
           echo "JAVA_HOME=$java_home" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "TIMESTAMP=$(Get-Date -Format 'yyyyMMdd_HHmmss')" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "PATH=$java_home\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
