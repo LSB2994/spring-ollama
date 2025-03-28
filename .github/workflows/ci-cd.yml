@@ -28,26 +28,27 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Send deployment start notification
+        shell: pwsh
         run: |
-          BRANCH=${GITHUB_REF#refs/heads/}
-          COMMIT_MSG=$(git log -1 --pretty=%B)
-          COMMIT_AUTHOR=$(git log -1 --pretty=%an)
-          BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          
-          export TZ="Asia/Phnom_Penh"
-          
-          MESSAGE="🚀 *Spring Ollama DEPLOYMENT STARTED*%0A%0A"
-          MESSAGE+="*Branch:* \`${BRANCH}\`%0A"
-          MESSAGE+="*Commit:* \`${COMMIT_MSG}\`%0A"
-          MESSAGE+="*Author:* ${COMMIT_AUTHOR}%0A"
-          MESSAGE+="*Build:* [View Details](${BUILD_URL})%0A"
-          MESSAGE+="*Started at:* $(date '+%Y-%m-%d %H:%M:%S')%0A%0A"
-          MESSAGE+="_Deployment in progress..._"
-          
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-               -d "chat_id=${TELEGRAM_CHAT_ID}" \
-               -d "text=${MESSAGE}" \
-               -d "parse_mode=Markdown" \
+          $BRANCH = $env:GITHUB_REF -replace 'refs/heads/',''
+          $COMMIT_MSG = git log -1 --pretty=%B
+          $COMMIT_AUTHOR = git log -1 --pretty=%an
+          $BUILD_URL = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          $env:TZ = "Asia/Phnom_Penh"
+
+          $MESSAGE = "🚀 *Spring Ollama DEPLOYMENT STARTED*%0A%0A"
+          $MESSAGE += "*Branch:* ``$BRANCH``%0A"
+          $MESSAGE += "*Commit:* ``$COMMIT_MSG``%0A"
+          $MESSAGE += "*Author:* $COMMIT_AUTHOR%0A"
+          $MESSAGE += "*Build:* [View Details]($BUILD_URL)%0A"
+          $MESSAGE += "*Started at:* $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')%0A%0A"
+          $MESSAGE += "_Deployment in progress..._"
+
+          curl.exe -s -X POST "https://api.telegram.org/bot${{ env.TELEGRAM_TOKEN }}/sendMessage" `
+               -d "chat_id=${{ env.TELEGRAM_CHAT_ID }}" `
+               -d "text=$MESSAGE" `
+               -d "parse_mode=Markdown" `
                -d "disable_web_page_preview=true"
 
       - name: Set up environment
