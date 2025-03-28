@@ -74,16 +74,11 @@ jobs:
 #          chmod +x ./gradlew
 #          ./gradlew build -x test
 
-      - name: Find JAR file
-        id: find-jar
-        run: |
-          JAR_FILE=$(find $GITHUB_WORKSPACE/build/libs -name "*.jar" | head -1)
-          if [ -z "$JAR_FILE" ]; then
-            echo "::error::No JAR file found in build/libs directory"
-            exit 1
-          fi
-          echo "jar_file=$JAR_FILE" >> $GITHUB_OUTPUT
-          echo "Found JAR file: $JAR_FILE"
+      - name: Upload JAR Artifact
+        uses: actions/upload-artifact@v3
+        with:
+            name: app-jar
+            path: build/libs/*.jar
 
       - name: Create backup directory
         run: |
