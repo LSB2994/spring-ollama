@@ -104,7 +104,7 @@ jobs:
           echo "Waiting for app to start..."
           sleep 30
           
-          HEALTH_URL="http://${{ env.SERVER_HOST }}:8080/actuator/health"
+          HEALTH_URL="https://${{ env.SERVER_HOST }}:8080/actuator/health"
           for i in {1..6}; do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_URL || echo "000")
             [ "$STATUS" -eq 200 ] && echo "✅ App is healthy" && exit 0
