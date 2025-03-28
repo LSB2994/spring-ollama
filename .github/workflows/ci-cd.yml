@@ -33,7 +33,7 @@ jobs:
       - name: Deploy new JAR
         run: |
           mkdir -p ${{ env.DEPLOY_DIR }}
-          cp build/libs/*.jar ${{ env.DEPLOY_DIR }}/${{ env.APP_NAME }}.jar
+          cp build/libs/*.jar ${{ env.DEPLOY_DIR }}
           
       - name: Stop previous instance
         run: |
