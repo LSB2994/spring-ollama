@@ -209,7 +209,7 @@ env:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest  # Changed to GitHub-hosted runner for reliability
+    runs-on: self-hosted  # Changed to GitHub-hosted runner for reliability
 
     steps:
       - name: Checkout code
@@ -326,7 +326,7 @@ jobs:
             -d "parse_mode=Markdown"
 
   cleanup:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: build-and-deploy
     if: always()
     steps:
