@@ -26,28 +26,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3  # Checkout the repository code
 
-      - name: Send deployment start notification
-        run: |
-          $Branch = $Env:GITHUB_REF -replace 'refs/heads/', ''
-          $CommitMsg = git log -1 --pretty=%B
-          $CommitAuthor = git log -1 --pretty=%an
-          $BuildUrl = "${Env:GITHUB_SERVER_URL}/${Env:GITHUB_REPOSITORY}/actions/runs/${Env:GITHUB_RUN_ID}"
-          $Env:TZ="Asia/Phnom_Penh"
-
-          $Message = "🚀 *HRMS DEPLOYMENT STARTED*%0A%0A"
-          $Message += "*Branch:* `{$Branch}`%0A"
-          $Message += "*Commit:* `{$CommitMsg}`%0A"
-          $Message += "*Author:* {$CommitAuthor}%0A"
-          $Message += "*Build:* [View Details]({$BuildUrl})%0A"
-          $Message += "*Started at:* $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')%0A%0A"
-          $Message += "_Deployment in progress..._"
-
-          Invoke-RestMethod -Uri "https://api.telegram.org/bot${Env:TELEGRAM_TOKEN}/sendMessage" -Method Post -Body @{
-              chat_id = $Env:TELEGRAM_CHAT_ID
-              text = $Message
-              parse_mode = "Markdown"
-              disable_web_page_preview = $true
-          }
+#      - name: Send deployment start notification
+#        run: |
+#          $Branch = $Env:GITHUB_REF -replace 'refs/heads/', ''
+#          $CommitMsg = git log -1 --pretty=%B
+#          $CommitAuthor = git log -1 --pretty=%an
+#          $BuildUrl = "${Env:GITHUB_SERVER_URL}/${Env:GITHUB_REPOSITORY}/actions/runs/${Env:GITHUB_RUN_ID}"
+#          $Env:TZ="Asia/Phnom_Penh"
+#
+#          $Message = "🚀 *HRMS DEPLOYMENT STARTED*%0A%0A"
+#          $Message += "*Branch:* `{$Branch}`%0A"
+#          $Message += "*Commit:* `{$CommitMsg}`%0A"
+#          $Message += "*Author:* {$CommitAuthor}%0A"
+#          $Message += "*Build:* [View Details]({$BuildUrl})%0A"
+#          $Message += "*Started at:* $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')%0A%0A"
+#          $Message += "_Deployment in progress..._"
+#
+#          Invoke-RestMethod -Uri "https://api.telegram.org/bot${Env:TELEGRAM_TOKEN}/sendMessage" -Method Post -Body @{
+#              chat_id = $Env:TELEGRAM_CHAT_ID
+#              text = $Message
+#              parse_mode = "Markdown"
+#              disable_web_page_preview = $true
+#          }
 
 
       - name: Set up environment (Linux)
