@@ -246,27 +246,48 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Deploy to server
+        timeout-minutes: 10
         run: |
+          # ===== Connection Test =====
+          echo "Testing SSH connection..."
+          if ! ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no lsb@${{ env.SERVER_HOST }} "echo 'SSH connection successful'"; then
+            echo "::error::SSH connection failed"
+            echo "Debug info:"
+            ping -c 4 ${{ env.SERVER_HOST }} || true
+            nc -zv ${{ env.SERVER_HOST }} 22 || true
+            exit 1
+          fi
+
+          # ===== Deployment =====
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          
-          # Backup existing deployment
-          ssh -o StrictHostKeyChecking=no lsb@${{ env.SERVER_HOST }} "
-            mkdir -p ${{ env.BACKUP_DIR }}
-            if [ -f ${{ env.DEPLOY_DIR }}/${{ env.APP_NAME }}.jar ]; then
-              cp ${{ env.DEPLOY_DIR }}/${{ env.APP_NAME }}.jar ${{ env.BACKUP_DIR }}/${{ env.APP_NAME }}_$TIMESTAMP.jar
-              echo 'Created backup'
-            fi
-          "
-          
-          # Deploy new JAR
-          scp -o StrictHostKeyChecking=no \
-            ${{ steps.find-jar.outputs.jar_path }} \
-            lsb@${{ env.SERVER_HOST }}:${{ env.DEPLOY_DIR }}/${{ env.APP_NAME }}.jar
-          
+
+          # Backup with connection retries
+          for i in {1..3}; do
+            ssh -o ConnectTimeout=15 lsb@${{ env.SERVER_HOST }} "
+              mkdir -p ${{ env.BACKUP_DIR }}
+              if [ -f ${{ env.DEPLOY_DIR }}/${{ env.APP_NAME }}.jar ]; then
+                cp ${{ env.DEPLOY_DIR }}/${{ env.APP_NAME }}.jar ${{ env.BACKUP_DIR }}/${{ env.APP_NAME }}_$TIMESTAMP.jar
+                echo 'Backup successful'
+                exit 0
+              else
+                echo 'No existing JAR to backup'
+                exit 0
+              fi
+            " && break || sleep 10
+          done
+
+          # Secure copy with retries
+          for i in {1..3}; do
+            scp -o ConnectTimeout=15 \
+              ${{ steps.find-jar.outputs.jar_path }} \
+              lsb@${{ env.SERVER_HOST }}:${{ env.DEPLOY_DIR }}/${{ env.APP_NAME }}.jar && break || sleep 10
+          done
+
           # Restart application
-          ssh -o StrictHostKeyChecking=no lsb@${{ env.SERVER_HOST }} "
+          ssh -o ConnectTimeout=15 lsb@${{ env.SERVER_HOST }} "
             pkill -f ${{ env.APP_NAME }} || true
             nohup java -jar ${{ env.DEPLOY_DIR }}/${{ env.APP_NAME }}.jar > ${{ env.DEPLOY_DIR }}/app.log 2>&1 &
+            disown
           "
 
       - name: Verify deployment
