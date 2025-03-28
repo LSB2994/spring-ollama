@@ -9,7 +9,6 @@ env:
   APP_NAME: "spring-ollama"          # Your JAR name (without version)
   DEPLOY_DIR: "/home/lsb/spring-ollama" # Where to deploy on server
 
-
 jobs:
   build-deploy:
     name: Build & Deploy
@@ -56,7 +55,7 @@ jobs:
           fi
 
           # Check HTTP endpoint (adjust port/endpoint as needed)
-          HEALTH_CHECK="http://localhost:8080/actuator/health"
+          HEALTH_CHECK="http://172.27.184.67:8080"
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK || echo "000")
           
           if [ "$RESPONSE" -ne 200 ]; then
