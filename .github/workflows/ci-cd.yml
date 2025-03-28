@@ -35,17 +35,42 @@ jobs:
           mkdir -p ${{ env.DEPLOY_DIR }}
           cp build/libs/*.jar ${{ env.DEPLOY_DIR }}
           
-      - name: Stop previous instance
+      - name: Start Application
         run: |
-          pkill -f "java -jar build/libs/.*jar" || true
-          sleep 2  # Wait for process to stop
+          # Stop any existing instance
+          pkill -f "java -jar ${{ env.JAR_BUILT }}" || true
+          sleep 2
+          
+          # Start new instance with debug info
+          nohup java -jar ${{ env.JAR_BUILT }} > app.log 2>&1 &
+          echo $! > app.pid  # Save PID
+          sleep 10  # Warm-up time
 
-      - name: Run new JAR
+      - name: Verify Running
         run: |
-          nohup java -jar build/libs/*.jar > app.log 2>&1 &
-          sleep 5  # Wait for startup
-          cat app.log  # Show initial logs
+          # Check process
+          if ! ps -p $(cat app.pid) > /dev/null; then
+            echo "::error::Process died!"
+            cat app.log
+            exit 1
+          fi
 
+          # Check HTTP endpoint (adjust port/endpoint as needed)
+          HEALTH_CHECK="http://localhost:8080/actuator/health"
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK || echo "000")
+          
+          if [ "$RESPONSE" -ne 200 ]; then
+            echo "::error::Health check failed (HTTP $RESPONSE)"
+            cat app.log
+            exit 1
+          fi
+          echo "✓ Verified JAR is working (HTTP 200)"
+
+      - name: Show Logs
+        if: always()
+        run: |
+          echo "=== Last 50 lines of logs ==="
+          tail -n 50 app.log
       - name: Unit Tests
         run: |
           chmod +x ./gradlew
