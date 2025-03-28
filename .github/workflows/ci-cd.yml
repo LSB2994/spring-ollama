@@ -59,7 +59,7 @@ jobs:
 
       - name: Build application
         run: |
-          chmod +x ./gradlew
+#          chmod +x ./gradlew
           ./gradlew bootJar
 
       - name: Find JAR file
