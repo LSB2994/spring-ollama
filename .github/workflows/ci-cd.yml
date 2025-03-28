@@ -37,11 +37,12 @@ jobs:
       - name: Start Application
         run: |
           # Stop any existing instance
-          pkill -f "java -jar ${{ env.DEPLOY_DIR }}/*.jar || true
+          pkill -f "java -jar ${{ env.DEPLOY_DIR }}/*.jar" || true
           sleep 2
           
           # Start new instance with debug info
-          nohup java -jar ${{ env.DEPLOY_DIR }}/*.jar > app.log 2>&1 &
+          cd ${{ env.DEPLOY_DIR }}
+          nohup java -jar /*.jar > app.log 2>&1 &
           echo $! > app.pid  # Save PID
           sleep 10  # Warm-up time
 
