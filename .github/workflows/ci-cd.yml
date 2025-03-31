@@ -125,135 +125,176 @@ jobs:
       - name: Verify deployment
         id: verify
         run: |
-          echo "Waiting for application to initialize..."
-          MAX_RETRIES=6
-          RETRY_INTERVAL=10
-
-          # Check the health endpoint
-          HEALTH_URL="http://${SERVER_HOST}:8080/actuator/health"
-          echo "Checking health endpoint at $HEALTH_URL"
-
-          for (( i=1; i<=MAX_RETRIES; i++ )); do
-            HEALTH_RESPONSE=$(curl -s -w "%{http_code}" "$HEALTH_URL" || echo "000")
-            HTTP_STATUS=${HEALTH_RESPONSE: -3}
-            HEALTH_BODY=${HEALTH_RESPONSE%???}
-            HEALTH_STATUS=$(echo "$HEALTH_BODY" | jq -r '.status // "DOWN"')
-
-            if [ "$HTTP_STATUS" -eq 200 ] && [ "$HEALTH_STATUS" == "UP" ]; then
-              echo "✅ Application health check successful - Status: UP"
-              echo "success=true" >> $GITHUB_OUTPUT
-              exit 0
-            else
-              echo "Health check failed (Attempt $i/$MAX_RETRIES): HTTP $HTTP_STATUS, Status: $HEALTH_STATUS, retrying in $RETRY_INTERVAL seconds..."
-              sleep $RETRY_INTERVAL
-            fi
+          echo "Waiting for deployment to initialize..."
+          MAX_RETRIES=10
+          RETRY_INTERVAL=5
+          
+          # First check if the WAR file is unpacked
+          for (( i=1; i<=$MAX_RETRIES; i++ )); do
+          if [ -d "$TOMCAT_WEBAPPS/$APP_NAME" ]; then
+           echo "✓ WAR file unpacked successfully"
+           break
+          else
+           echo "Waiting for WAR unpacking... (Attempt $i/$MAX_RETRIES)"
+           sleep $RETRY_INTERVAL
+          fi
           done
-
-          echo "::warning::Health check failed after $MAX_RETRIES attempts"
+          
+          # If WAR wasn't unpacked by final retry, mark as failed
+          if [ "$i" -gt "$MAX_RETRIES" ]; then
+          echo "::warning::WAR file was not unpacked within expected time"
+          echo "success=false" >> $GITHUB_OUTPUT
+          exit 0
+          fi
+          
+          # Wait for application initialization
+          echo "Waiting for application to initialize..."
+          sleep 10
+          
+          # Check the health endpoint
+          HEALTH_URL="http://$SERVER_HOST:8080/$APP_NAME/actuator/health"
+          echo "Checking health endpoint at $HEALTH_URL"
+          
+          for (( i=1; i<=6; i++ )); do
+          HEALTH_STATUS=$(curl -s -o health_response.txt -w "%{http_code}" "$HEALTH_URL" || echo "000")
+          
+          if [ "$HEALTH_STATUS" == "200" ]; then
+           # Parse the response to see if status is UP
+           APP_STATUS=$(grep -o '"status":"[^"]*"' health_response.txt | cut -d'"' -f4)
+          
+           if [ "$APP_STATUS" == "UP" ]; then
+             echo "✅ Application health check successful - Status: UP"
+             echo "success=true" >> $GITHUB_OUTPUT
+             rm health_response.txt
+             exit 0
+           else
+             echo "⚠️ Application responded but status is not UP: $APP_STATUS"
+           fi
+          else
+           echo "Health check returned HTTP $HEALTH_STATUS (Attempt $i/6), retrying in 10 seconds..."
+           sleep 10
+          fi
+          done
+          
+          # If we reach here, the health check failed
+          if [ -f health_response.txt ]; then
+          echo "Last health check response:"
+          cat health_response.txt
+          rm health_response.txt
+          fi
+          
+          echo "::warning::Health check failed after multiple attempts"
           echo "success=false" >> $GITHUB_OUTPUT
 
       - name: Send success notification
-        if: steps.verify.outputs.success == 'true'
+        if: success() && steps.verify.outputs.success == 'true'
         run: |
-          export TZ="Asia/Phnom_Penh"
-          BRANCH=${GITHUB_REF#refs/heads/}
-          VERSION="${{ steps.find-jar.outputs.version }}"
-          DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-          APP_URL="http://${SERVER_HOST}:8080/${APP_NAME}/swagger-ui/index.html#"
-          BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-          MESSAGE="✅ *LLAMA DEPLOYMENT SUCCESSFUL*"$'\n\n'
-          MESSAGE+="*Branch:* \`${BRANCH}\`"$'\n'
-          MESSAGE+="*Version:* \`${VERSION}\`"$'\n'
-          MESSAGE+="*Environment:* \`${BRANCH}\`"$'\n'
-          MESSAGE+="*Deployed at:* ${DEPLOY_TIME}"$'\n'
-          MESSAGE+="*Application URL:* [Open App](${APP_URL})"$'\n'
-          MESSAGE+="*Build Details:* [View Log](${BUILD_URL})"$'\n\n'
-          MESSAGE+="✨ _Deployment completed successfully!_"
-
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+          # Get deployment information
+            # Set your local timezone (change Asia/Phnom_Penh to your actual timezone)
+            export TZ="Asia/Phnom_Penh"
+          
+            BRANCH=${GITHUB_REF#refs/heads/}
+            VERSION="${{ steps.find-war.outputs.version }}"
+            DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+            APP_URL="http://${SERVER_HOST}:8080/${APP_NAME}/swagger-ui/index.html#"
+            BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          
+            # Create success message
+            MESSAGE="✅ *HRMS DEPLOYMENT SUCCESSFUL*%0A%0A"
+            MESSAGE+="*Branch:* \`${BRANCH}\`%0A"
+            MESSAGE+="*Version:* \`${VERSION}\`%0A"
+            MESSAGE+="*Environment:* \`${BRANCH}\`%0A"
+            MESSAGE+="*Deployed at:* ${DEPLOY_TIME}%0A"
+            MESSAGE+="*Application URL:* [Open App](${APP_URL})%0A"
+            MESSAGE+="*Build Details:* [View Log](${BUILD_URL})%0A%0A"
+            MESSAGE+="✨ _Deployment completed successfully!_"
+          
+            # Send notification to Telegram group
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
               -d "chat_id=${TELEGRAM_CHAT_ID}" \
               -d "text=${MESSAGE}" \
               -d "parse_mode=Markdown" \
-              -d "disable_web_page_preview=true" || {
-            echo "::error::Failed to send Telegram notification"
-            exit 1
-          }
+              -d "disable_web_page_preview=true"
 
       - name: Rollback on failure
-        if: failure() || steps.verify.outputs.success == 'false'
+        if: (failure() || steps.verify.outputs.success == 'false') && steps.backup.outputs.has_backup == 'true'
         run: |
           echo "Deployment failed. Attempting rollback..."
+          # Set your local timezone (change Asia/Phnom_Penh to your actual timezone)
           export TZ="Asia/Phnom_Penh"
+          
+          # Check if we have a backup to roll back to
           BACKUP_FILE="${{ steps.backup.outputs.backup_file }}"
-          BRANCH=${GITHUB_REF#refs/heads/}
-
-          if [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
-            rm -f "$DEPLOY_DIR/$APP_NAME.jar" || {
-              echo "::error::Failed to remove current JAR file"
-              exit 1
-            }
-            cp "$BACKUP_FILE" "$DEPLOY_DIR/$APP_NAME.jar" || {
-              echo "::error::Failed to copy backup JAR file"
-              exit 1
-            }
-            systemctl restart myapp.service || {
-              echo "Systemctl restart failed, falling back to nohup..."
-              pkill -f "java -jar $DEPLOY_DIR/$APP_NAME.jar" || true
-              nohup java -jar "$DEPLOY_DIR/$APP_NAME.jar" > app.log 2>&1 &
-              sleep 5  # Give it a moment to start
-            }
-
+          
+          if [ -f "$BACKUP_FILE" ]; then
+            # Perform rollback
+            sudo /bin/rm -f $TOMCAT_WEBAPPS/$APP_NAME.war
+            sudo /bin/rm -rf $TOMCAT_WEBAPPS/$APP_NAME
+            sudo /bin/cp "$BACKUP_FILE" "$TOMCAT_WEBAPPS/$APP_NAME.war"
+            sudo /usr/bin/systemctl restart tomcat10
+          
             echo "Rolled back to previous version"
-            ROLLBACK_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-            ROLLBACK_MSG="🔄 *AUTOMATIC ROLLBACK PERFORMED*"$'\n\n'
-            ROLLBACK_MSG+="*Branch:* \`${BRANCH}\`"$'\n'
-            ROLLBACK_MSG+="*Rollback time:* ${ROLLBACK_TIME}"$'\n'
-            ROLLBACK_MSG+="*Info:* Deployment failed, rolled back to previous version"$'\n'
-
+          
+            # Send rollback notification
+            ROLLBACK_MSG="🔄 *AUTOMATIC ROLLBACK PERFORMED*%0A%0A"
+            ROLLBACK_MSG+="*Branch:* \`${BRANCH}\`%0A"
+            ROLLBACK_MSG+="*Rollback time:* $(date '+%Y-%m-%d %H:%M:%S')%0A"
+            ROLLBACK_MSG+="*Info:* Deployment failed, rolled back to previous version%0A"
+          
             curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-                -d "chat_id=${TELEGRAM_CHAT_ID}" \
-                -d "text=${ROLLBACK_MSG}" \
-                -d "parse_mode=Markdown" || {
-              echo "::warning::Rollback succeeded but Telegram notification failed"
-            }
+                 -d "chat_id=${TELEGRAM_CHAT_ID}" \
+                 -d "text=${ROLLBACK_MSG}" \
+                 -d "parse_mode=Markdown"
           else
-            echo "::error::Backup file not found or not defined: $BACKUP_FILE"
-            exit 1
+            echo "Backup file not found or not accessible"
           fi
 
       - name: Failure without rollback notification
         if: (failure() || steps.verify.outputs.success == 'false') && steps.backup.outputs.has_backup != 'true'
         run: |
-          echo "Deployment failed, no backup found. Manual intervention required."
-          FAILURE_MSG="❌ *LLAMA DEPLOYMENT FAILED*%0A%0A"
+          # Send failure notification without rollback
+          # Set your local timezone (change Asia/Phnom_Penh to your actual timezone)
+          export TZ="Asia/Phnom_Penh"
+          
+          FAILURE_MSG="❌ *DEPLOYMENT FAILED - NO BACKUP AVAILABLE*%0A%0A"
           FAILURE_MSG+="*Branch:* \`${BRANCH}\`%0A"
-          FAILURE_MSG+="*Failure time:* $(date '+%Y-%m-%d %H:%M:%S')%0A"
-          FAILURE_MSG+="*Info:* Deployment failed, no backup available for rollback%0A"
+          FAILURE_MSG+="*Time:* $(date '+%Y-%m-%d %H:%M:%S')%0A"
+          FAILURE_MSG+="*Info:* No previous backup found for rollback%0A"
           
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
                -d "chat_id=${TELEGRAM_CHAT_ID}" \
                -d "text=${FAILURE_MSG}" \
                -d "parse_mode=Markdown"
 
-      - name: Cleanup orphan processes
+  cleanup:
+    runs-on: self-hosted
+    needs: build-and-deploy
+    if: always()
+
+    steps:
+      - name: Cleanup old backups
         run: |
-          # Find all orphan Java processes related to the application and terminate them
-          echo "Searching for orphan Java processes..."
+          # Always run cleanup regardless of deployment success or failure
+          echo "Cleaning up old backups..."
 
-          # List orphan java processes (excluding the current one)
-          ORPHAN_PIDS=$(ps aux | grep 'java -jar $DEPLOY_DIR/*.jar' | grep -v $$ | awk '{print $2}')
+          # Count existing backups
+          BACKUP_COUNT=$(ls -1 $BACKUP_DIR/${APP_NAME}_backup_*.war 2>/dev/null | wc -l)
 
-          # If orphan PIDs are found, terminate them
-          if [ -n "$ORPHAN_PIDS" ]; then
-            echo "Terminating orphan processes: $ORPHAN_PIDS"
-            for pid in $ORPHAN_PIDS; do
-              kill -9 $pid || echo "Failed to terminate process $pid"
-            done
+          if [ "$BACKUP_COUNT" -gt "$MAX_BACKUPS" ]; then
+            # Calculate how many to remove
+            REMOVE_COUNT=$((BACKUP_COUNT - MAX_BACKUPS))
+
+            # Find the oldest backups and remove them
+            ls -1t $BACKUP_DIR/${APP_NAME}_backup_*.war | tail -n $REMOVE_COUNT | xargs rm -f
+
+            echo "Removed $REMOVE_COUNT old backup(s), keeping the $MAX_BACKUPS most recent"
           else
-            echo "No orphan processes found"
+            echo "Found $BACKUP_COUNT backup(s), no cleanup needed (keeping max $MAX_BACKUPS)"
           fi
 
-          # Clean up any temporary files or logs you don't need
-          echo "Cleaning up temporary log files..."
-          rm -f $DEPLOY_DIR/app.log
+      - name: Clean build artifacts
+        run: |
+          # Free up disk space by cleaning old builds
+          find $GITHUB_WORKSPACE -name "*.war" -delete || true
+          ./gradlew clean || true
+          echo "Cleaned up build artifacts"
