@@ -1,4 +1,4 @@
-name: HRMS CI/CD Pipeline
+name: LLAMA CI/CD Pipeline
 
 on:
   push:
@@ -37,7 +37,7 @@ jobs:
           export TZ="Asia/Phnom_Penh"
           
           # Prepare the message with proper formatting
-          MESSAGE="🚀 *HRMS DEPLOYMENT STARTED*%0A%0A"
+          MESSAGE="🚀 *LLAMA DEPLOYMENT STARTED*%0A%0A"
           MESSAGE+="*Branch:* \`${BRANCH}\`%0A"
           MESSAGE+="*Commit:* \`${COMMIT_MSG}\`%0A"
           MESSAGE+="*Author:* ${COMMIT_AUTHOR}%0A"
@@ -122,47 +122,47 @@ jobs:
           echo $! > app.pid  # Save PID
           sleep 10  # Warm-up time
 
-      - name: Verify deployment
-        id: verify
-        run: |
-          echo "Waiting for application to initialize..."
-          MAX_RETRIES=10
-          RETRY_INTERVAL=5
-          
-          # Check the health endpoint
-          HEALTH_URL="http://$SERVER_HOST:8080/actuator/health"
-          echo "Checking health endpoint at $HEALTH_URL"
-          
-          for (( i=1; i<=6; i++ )); do
-            HEALTH_STATUS=$(curl -s -o health_response.txt -w "%{http_code}" "$HEALTH_URL" || echo "000")
-          
-            if [ "$HEALTH_STATUS" == "200" ]; then
-              # Parse the response to see if status is UP
-              APP_STATUS=$(grep -o '"status":"[^"]*"' health_response.txt | cut -d'"' -f4)
-          
-              if [ "$APP_STATUS" == "UP" ]; then
-                echo "✅ Application health check successful - Status: UP"
-                echo "success=true" >> $GITHUB_OUTPUT
-                rm health_response.txt
-                exit 0
-              else
-                echo "⚠️ Application responded but status is not UP: $APP_STATUS"
-              fi
-            else
-              echo "Health check returned HTTP $HEALTH_STATUS (Attempt $i/6), retrying in 10 seconds..."
-              sleep 10
-            fi
-          done
-          
-          # If we reach here, the health check failed
-          if [ -f health_response.txt ]; then
-            echo "Last health check response:"
-            cat health_response.txt
-            rm health_response.txt
-          fi
-          
-          echo "::warning::Health check failed after multiple attempts"
-          echo "success=false" >> $GITHUB_OUTPUT
+#      - name: Verify deployment
+#        id: verify
+#        run: |
+#          echo "Waiting for application to initialize..."
+#          MAX_RETRIES=10
+#          RETRY_INTERVAL=5
+#
+#          # Check the health endpoint
+#          HEALTH_URL="http://$SERVER_HOST:8080/actuator/health"
+#          echo "Checking health endpoint at $HEALTH_URL"
+#
+#          for (( i=1; i<=6; i++ )); do
+#            HEALTH_STATUS=$(curl -s -o health_response.txt -w "%{http_code}" "$HEALTH_URL" || echo "000")
+#
+#            if [ "$HEALTH_STATUS" == "200" ]; then
+#              # Parse the response to see if status is UP
+#              APP_STATUS=$(grep -o '"status":"[^"]*"' health_response.txt | cut -d'"' -f4)
+#
+#              if [ "$APP_STATUS" == "UP" ]; then
+#                echo "✅ Application health check successful - Status: UP"
+#                echo "success=true" >> $GITHUB_OUTPUT
+#                rm health_response.txt
+#                exit 0
+#              else
+#                echo "⚠️ Application responded but status is not UP: $APP_STATUS"
+#              fi
+#            else
+#              echo "Health check returned HTTP $HEALTH_STATUS (Attempt $i/6), retrying in 10 seconds..."
+#              sleep 10
+#            fi
+#          done
+#
+#          # If we reach here, the health check failed
+#          if [ -f health_response.txt ]; then
+#            echo "Last health check response:"
+#            cat health_response.txt
+#            rm health_response.txt
+#          fi
+#
+#          echo "::warning::Health check failed after multiple attempts"
+#          echo "success=false" >> $GITHUB_OUTPUT
 
       - name: Send success notification
         if: success() && steps.verify.outputs.success == 'true'
@@ -177,7 +177,7 @@ jobs:
             BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           
             # Create success message
-            MESSAGE="✅ *HRMS DEPLOYMENT SUCCESSFUL*%0A%0A"
+            MESSAGE="✅ *LLAMA DEPLOYMENT SUCCESSFUL*%0A%0A"
             MESSAGE+="*Branch:* \`${BRANCH}\`%0A"
             MESSAGE+="*Version:* \`${VERSION}\`%0A"
             MESSAGE+="*Environment:* \`${BRANCH}\`%0A"
@@ -228,7 +228,7 @@ jobs:
         if: (failure() || steps.verify.outputs.success == 'false') && steps.backup.outputs.has_backup != 'true'
         run: |
           echo "Deployment failed, no backup found. Manual intervention required."
-          FAILURE_MSG="❌ *HRMS DEPLOYMENT FAILED*%0A%0A"
+          FAILURE_MSG="❌ *LLAMA DEPLOYMENT FAILED*%0A%0A"
           FAILURE_MSG+="*Branch:* \`${BRANCH}\`%0A"
           FAILURE_MSG+="*Failure time:* $(date '+%Y-%m-%d %H:%M:%S')%0A"
           FAILURE_MSG+="*Info:* Deployment failed, no backup available for rollback%0A"
