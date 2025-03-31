@@ -193,36 +193,36 @@ jobs:
               -d "parse_mode=Markdown" \
               -d "disable_web_page_preview=true"
 
-      - name: Rollback on failure
-        if: (failure() || steps.verify.outputs.success == 'false') && steps.backup.outputs.has_backup == 'true'
-        run: |
-          echo "Deployment failed. Attempting rollback..."
-          export TZ="Asia/Phnom_Penh"
-          
-          BACKUP_FILE="${{ steps.backup.outputs.backup_file }}"
-          
-          if [ -f "$BACKUP_FILE" ]; then
-            # Perform rollback
-            rm -f $DEPLOY_DIR/$APP_NAME.jar
-            cp "$BACKUP_FILE" $DEPLOY_DIR/$APP_NAME.jar
-            pkill -f "java -jar $DEPLOY_DIR/*.jar" || true
-            nohup java -jar $DEPLOY_DIR/*.jar > app.log 2>&1 &
-          
-            echo "Rolled back to previous version"
-          
-            # Send rollback notification
-            ROLLBACK_MSG="🔄 *AUTOMATIC ROLLBACK PERFORMED*%0A%0A"
-            ROLLBACK_MSG+="*Branch:* \`${BRANCH}\`%0A"
-            ROLLBACK_MSG+="*Rollback time:* $(date '+%Y-%m-%d %H:%M:%S')%0A"
-            ROLLBACK_MSG+="*Info:* Deployment failed, rolled back to previous version%0A"
-          
-            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-                 -d "chat_id=${TELEGRAM_CHAT_ID}" \
-                 -d "text=${ROLLBACK_MSG}" \
-                 -d "parse_mode=Markdown"
-          else
-            echo "Backup file not found or not accessible"
-          fi
+#      - name: Rollback on failure
+#        if: (failure() || steps.verify.outputs.success == 'false') && steps.backup.outputs.has_backup == 'true'
+#        run: |
+#          echo "Deployment failed. Attempting rollback..."
+#          export TZ="Asia/Phnom_Penh"
+#
+#          BACKUP_FILE="${{ steps.backup.outputs.backup_file }}"
+#
+#          if [ -f "$BACKUP_FILE" ]; then
+#            # Perform rollback
+#            rm -f $DEPLOY_DIR/$APP_NAME.jar
+#            cp "$BACKUP_FILE" $DEPLOY_DIR/$APP_NAME.jar
+#            pkill -f "java -jar $DEPLOY_DIR/*.jar" || true
+#            nohup java -jar $DEPLOY_DIR/*.jar > app.log 2>&1 &
+#
+#            echo "Rolled back to previous version"
+#
+#            # Send rollback notification
+#            ROLLBACK_MSG="🔄 *AUTOMATIC ROLLBACK PERFORMED*%0A%0A"
+#            ROLLBACK_MSG+="*Branch:* \`${BRANCH}\`%0A"
+#            ROLLBACK_MSG+="*Rollback time:* $(date '+%Y-%m-%d %H:%M:%S')%0A"
+#            ROLLBACK_MSG+="*Info:* Deployment failed, rolled back to previous version%0A"
+#
+#            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+#                 -d "chat_id=${TELEGRAM_CHAT_ID}" \
+#                 -d "text=${ROLLBACK_MSG}" \
+#                 -d "parse_mode=Markdown"
+#          else
+#            echo "Backup file not found or not accessible"
+#          fi
 
       - name: Failure without rollback notification
         if: (failure() || steps.verify.outputs.success == 'false') && steps.backup.outputs.has_backup != 'true'
