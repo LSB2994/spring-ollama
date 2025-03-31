@@ -126,68 +126,50 @@ jobs:
         id: verify
         run: |
           echo "Waiting for application to initialize..."
-          MAX_RETRIES=10
-          RETRY_INTERVAL=5
-
+          MAX_RETRIES=6
+          RETRY_INTERVAL=10
+          
           # Check the health endpoint
           HEALTH_URL="http://$SERVER_HOST:8080/actuator/health"
           echo "Checking health endpoint at $HEALTH_URL"
-
-          for (( i=1; i<=6; i++ )); do
-            HEALTH_STATUS=$(curl -s -o health_response.txt -w "%{http_code}" "$HEALTH_URL" || echo "000")
-
-            if [ "$HEALTH_STATUS" == "200" ]; then
-              # Parse the response to see if status is UP
-              APP_STATUS=$(grep -o '"status":"[^"]*"' health_response.txt | cut -d'"' -f4)
-
-              if [ "$APP_STATUS" == "UP" ]; then
-                echo "✅ Application health check successful - Status: UP"
-                echo "success=true" >> $GITHUB_OUTPUT
-                rm health_response.txt
-                exit 0
-              else
-                echo "⚠️ Application responded but status is not UP: $APP_STATUS"
-              fi
-            else
-              echo "Health check returned HTTP $HEALTH_STATUS (Attempt $i/6), retrying in 10 seconds..."
-              sleep 10
-            fi
-          done
-
-          # If we reach here, the health check failed
-          if [ -f health_response.txt ]; then
-            echo "Last health check response:"
-            cat health_response.txt
-            rm health_response.txt
+          
+          for (( i=1; i<=MAX_RETRIES; i++ )); do
+          HEALTH_RESPONSE=$(curl -s "$HEALTH_URL" || echo "")
+          HEALTH_STATUS=$(echo "$HEALTH_RESPONSE" | jq -r '.status // empty')
+          
+          if [ "$HEALTH_STATUS" == "UP" ]; then
+           echo "✅ Application health check successful - Status: UP"
+           echo "success=true" >> $GITHUB_OUTPUT
+           exit 0
+          else
+           echo "Health check failed (Attempt $i/$MAX_RETRIES), retrying in $RETRY_INTERVAL seconds..."
+           sleep $RETRY_INTERVAL
           fi
-
+          done
+          
           echo "::warning::Health check failed after multiple attempts"
           echo "success=false" >> $GITHUB_OUTPUT
 
       - name: Send success notification
         if: success() && steps.verify.outputs.success == 'true'
         run: |
-          # Get deployment information
-            export TZ="Asia/Phnom_Penh"
+          export TZ="Asia/Phnom_Penh"
+          BRANCH=${GITHUB_REF#refs/heads/}
+          VERSION="${{ steps.find-jar.outputs.version }}"
+          DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+          APP_URL="http://${SERVER_HOST}:8080/${APP_NAME}/swagger-ui/index.html#"
+          BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           
-            BRANCH=${GITHUB_REF#refs/heads/}
-            VERSION="${{ steps.find-jar.outputs.version }}"
-            DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-            APP_URL="http://${SERVER_HOST}:8080/${APP_NAME}/swagger-ui/index.html#"
-            BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          MESSAGE="✅ *LLAMA DEPLOYMENT SUCCESSFUL*%0A%0A"
+          MESSAGE+="*Branch:* \`${BRANCH}\`%0A"
+          MESSAGE+="*Version:* \`${VERSION}\`%0A"
+          MESSAGE+="*Environment:* \`${BRANCH}\`%0A"
+          MESSAGE+="*Deployed at:* ${DEPLOY_TIME}%0A"
+          MESSAGE+="*Application URL:* [Open App](${APP_URL})%0A"
+          MESSAGE+="*Build Details:* [View Log](${BUILD_URL})%0A%0A"
+          MESSAGE+="✨ _Deployment completed successfully!_"
           
-            # Create success message
-            MESSAGE="✅ *LLAMA DEPLOYMENT SUCCESSFUL*%0A%0A"
-            MESSAGE+="*Branch:* \`${BRANCH}\`%0A"
-            MESSAGE+="*Version:* \`${VERSION}\`%0A"
-            MESSAGE+="*Environment:* \`${BRANCH}\`%0A"
-            MESSAGE+="*Deployed at:* ${DEPLOY_TIME}%0A"
-            MESSAGE+="*Application URL:* [Open App](${APP_URL})%0A"
-            MESSAGE+="*Build Details:* [View Log](${BUILD_URL})%0A%0A"
-            MESSAGE+="✨ _Deployment completed successfully!_"
-          
-            # Send notification to Telegram group
-            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
               -d "chat_id=${TELEGRAM_CHAT_ID}" \
               -d "text=${MESSAGE}" \
               -d "parse_mode=Markdown" \
@@ -198,19 +180,18 @@ jobs:
         run: |
           echo "Deployment failed. Attempting rollback..."
           export TZ="Asia/Phnom_Penh"
-          
           BACKUP_FILE="${{ steps.backup.outputs.backup_file }}"
           
           if [ -f "$BACKUP_FILE" ]; then
-            # Perform rollback
             rm -f $DEPLOY_DIR/$APP_NAME.jar
             cp "$BACKUP_FILE" $DEPLOY_DIR/$APP_NAME.jar
-            pkill -f "java -jar $DEPLOY_DIR/*.jar" || true
-            nohup java -jar $DEPLOY_DIR/*.jar > app.log 2>&1 &
+            systemctl restart myapp.service || {
+              echo "Fallback: Using nohup to restart the application"
+              pkill -f "java -jar $DEPLOY_DIR/*.jar" || true
+              nohup java -jar $DEPLOY_DIR/*.jar > app.log 2>&1 &
+            }
           
             echo "Rolled back to previous version"
-          
-            # Send rollback notification
             ROLLBACK_MSG="🔄 *AUTOMATIC ROLLBACK PERFORMED*%0A%0A"
             ROLLBACK_MSG+="*Branch:* \`${BRANCH}\`%0A"
             ROLLBACK_MSG+="*Rollback time:* $(date '+%Y-%m-%d %H:%M:%S')%0A"
