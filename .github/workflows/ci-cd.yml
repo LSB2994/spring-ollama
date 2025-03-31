@@ -83,10 +83,10 @@ jobs:
           VERSION=$(echo $JAR_FILE | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "unknown")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Create backup directory
-        run: |
-          mkdir -p $BACKUP_DIR
-          echo "Created backup directory at $BACKUP_DIR"
+#      - name: Create backup directory
+#        run: |
+#          mkdir -p $BACKUP_DIR
+#          echo "Created backup directory at $BACKUP_DIR"
 
       - name: Backup existing deployment
         run: |
