@@ -259,4 +259,3 @@ jobs:
           # Clean up any temporary files or logs you don't need
           echo "Cleaning up temporary log files..."
           rm -f $DEPLOY_DIR/app.log
-      
