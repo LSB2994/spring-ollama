@@ -126,8 +126,8 @@ jobs:
         id: verify
         run: |
           echo "Waiting for application to initialize..."
-          MAX_RETRIES=6
-          RETRY_INTERVAL=10
+          MAX_RETRIES=10
+          RETRY_INTERVAL=5
 
           # Check the health endpoint
           HEALTH_URL="http://$SERVER_HOST:8080/actuator/health"
