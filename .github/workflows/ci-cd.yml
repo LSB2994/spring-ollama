@@ -9,7 +9,6 @@ env:
   APP_NAME: "spring-ollama"          # Your JAR name (without version)
   DEPLOY_DIR: "/home/lsb/spring-ollama" # Where to deploy on server
 
-
 jobs:
   build-deploy:
     name: Build & Deploy
@@ -33,20 +32,16 @@ jobs:
       - name: Deploy new JAR
         run: |
           mkdir -p ${{ env.DEPLOY_DIR }}
-          cp build/libs/*.jar ${{ env.DEPLOY_DIR }}/${{ env.APP_NAME }}.jar
+          cp build/libs/*.jar ${{ env.DEPLOY_DIR }}
           
-      - name: Stop previous instance
+      - name: Start Application
         run: |
-          pkill -f "java -jar build/libs/.*jar" || true
-          sleep 2  # Wait for process to stop
-
-      - name: Run new JAR
-        run: |
-          nohup java -jar build/libs/*.jar > app.log 2>&1 &
-          sleep 5  # Wait for startup
-          cat app.log  # Show initial logs
-
-      - name: Unit Tests
-        run: |
-          chmod +x ./gradlew
-          ./gradlew clean bootJar --info
+          # Stop any existing instance
+          pkill -f "java -jar ${{ env.DEPLOY_DIR }}/*.jar" || true
+          sleep 2
+          
+          # Start new instance with debug info
+          cd ${{ env.DEPLOY_DIR }}
+          nohup java -jar /*.jar > app.log 2>&1 &
+          echo $! > app.pid  # Save PID
+          sleep 10  # Warm-up time
