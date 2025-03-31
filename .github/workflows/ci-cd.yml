@@ -238,22 +238,25 @@ jobs:
                -d "text=${FAILURE_MSG}" \
                -d "parse_mode=Markdown"
 
-      - name: Cleanup old deployment files
+      - name: Cleanup orphan processes
         run: |
-          # Remove the previous backup if it is no longer needed
-          if [ -f "$DEPLOY_DIR/${APP_NAME}_backup_$TIMESTAMP.jar" ]; then
-            echo "Cleaning up old backup..."
-            rm -f "$DEPLOY_DIR/${APP_NAME}_backup_$TIMESTAMP.jar"
+          # Find all orphan Java processes related to the application and terminate them
+          echo "Searching for orphan Java processes..."
+
+          # List orphan java processes (excluding the current one)
+          ORPHAN_PIDS=$(ps aux | grep 'java -jar $DEPLOY_DIR/*.jar' | grep -v $$ | awk '{print $2}')
+
+          # If orphan PIDs are found, terminate them
+          if [ -n "$ORPHAN_PIDS" ]; then
+            echo "Terminating orphan processes: $ORPHAN_PIDS"
+            for pid in $ORPHAN_PIDS; do
+              kill -9 $pid || echo "Failed to terminate process $pid"
+            done
+          else
+            echo "No orphan processes found"
           fi
 
-          # Optionally, clean up any leftover JAR files that are not part of the current deployment
-          echo "Cleaning up old JAR files in the deployment directory..."
-          find $DEPLOY_DIR -type f -name "*.jar" ! -name "$APP_NAME.jar" -exec rm -f {} \;
-
-          # Ensure no stray processes are running that might have been left from previous deployments
-          echo "Killing any stray Java processes..."
-          pkill -f "java -jar $DEPLOY_DIR/*.jar" || true
-
-          # Optionally, clean up any other temporary files or logs you don't need
+          # Clean up any temporary files or logs you don't need
           echo "Cleaning up temporary log files..."
           rm -f $DEPLOY_DIR/app.log
+      
