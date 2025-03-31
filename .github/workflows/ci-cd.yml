@@ -45,3 +45,24 @@ jobs:
           nohup java -jar /*.jar > app.log 2>&1 &
           echo $! > app.pid  # Save PID
           sleep 10  # Warm-up time
+      - name: Health Check
+        run: |
+          sleep 5  # Allow time for startup
+          if curl -f http://localhost:8080/actuator/health; then
+            echo "Application is running successfully."
+          else
+            echo "Application failed to start!" >&2
+            exit 1  # Fails the deployment if the app is not running
+          fi
+
+      - name: View Logs
+        run: |
+          tail -n 50 ${{ env.DEPLOY_DIR }}/app.log
+
+      - name: Rollback on Failure
+        if: failure()
+        run: |
+          echo "Rolling back to previous version..."
+          mv ${{ env.DEPLOY_DIR }}/backup.jar ${{ env.DEPLOY_DIR }}/app.jar
+          nohup java -jar ${{ env.DEPLOY_DIR }}/app.jar > app.log 2>&1 &
+
