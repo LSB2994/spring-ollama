@@ -237,3 +237,23 @@ jobs:
                -d "chat_id=${TELEGRAM_CHAT_ID}" \
                -d "text=${FAILURE_MSG}" \
                -d "parse_mode=Markdown"
+
+      - name: Cleanup old deployment files
+        run: |
+          # Remove the previous backup if it is no longer needed
+          if [ -f "$DEPLOY_DIR/${APP_NAME}_backup_$TIMESTAMP.jar" ]; then
+            echo "Cleaning up old backup..."
+            rm -f "$DEPLOY_DIR/${APP_NAME}_backup_$TIMESTAMP.jar"
+          fi
+
+          # Optionally, clean up any leftover JAR files that are not part of the current deployment
+          echo "Cleaning up old JAR files in the deployment directory..."
+          find $DEPLOY_DIR -type f -name "*.jar" ! -name "$APP_NAME.jar" -exec rm -f {} \;
+
+          # Ensure no stray processes are running that might have been left from previous deployments
+          echo "Killing any stray Java processes..."
+          pkill -f "java -jar $DEPLOY_DIR/*.jar" || true
+
+          # Optionally, clean up any other temporary files or logs you don't need
+          echo "Cleaning up temporary log files..."
+          rm -f $DEPLOY_DIR/app.log
