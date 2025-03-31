@@ -109,9 +109,18 @@ jobs:
           # Create deployment directory
           mkdir -p $DEPLOY_DIR
           
-          # Stop any running instance of the application
-          pkill -f "java -jar $DEPLOY_DIR/*.jar" || true
-          sleep 2
+          # Stop any running instance more reliably
+          ps aux | grep spring-ollama | grep -v grep | awk '{print $2}' | xargs kill -9 || true
+          sleep 5  # Give it time to fully stop
+          
+          # Verify port is available
+          if lsof -i:8080 >/dev/null 2>&1; then
+            echo "::warning::Port 8080 is still in use after stopping attempts"
+            lsof -i:8080
+            # Either force kill again or use a different port
+            kill -9 $(lsof -t -i:8080) || true
+            sleep 2
+          fi
           
           # Deploy the new .jar file
           cp ${{ steps.find-jar.outputs.jar_file }} $DEPLOY_DIR/
@@ -120,7 +129,16 @@ jobs:
           # Start the application
           nohup java -jar $DEPLOY_DIR/*.jar > app.log 2>&1 &
           echo $! > app.pid  # Save PID
-          sleep 10  # Warm-up time
+          sleep 15  # Longer warm-up time
+          
+          # Verify application started successfully
+          if ! grep -q "Started " app.log && ! grep -q "Application ready" app.log; then
+            echo "::error::Application may have failed to start:"
+            tail -n 50 app.log
+            exit 1
+          fi
+          
+          echo "Application deployed and started successfully"
 
 #      - name: Verify deployment
 #        id: verify
