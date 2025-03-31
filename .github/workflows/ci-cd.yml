@@ -85,14 +85,14 @@ jobs:
 
       - name: Create backup directory
         run: |
-          mkdir -p $BACKUP_DIR
-          echo "Created backup directory at $BACKUP_DIR"
+          mkdir -p $DEPLOY_DIR
+          echo "Created backup directory at $DEPLOY_DIR"
 
       - name: Backup existing deployment
         run: |
           if [ -f "$DEPLOY_DIR/$APP_NAME.jar" ]; then
             # Create backup with timestamp
-            BACKUP_FILE="$BACKUP_DIR/${APP_NAME}_backup_$TIMESTAMP.jar"
+            BACKUP_FILE="$DEPLOY_DIR/${APP_NAME}_backup_$TIMESTAMP.jar"
             sudo cp "$DEPLOY_DIR/$APP_NAME.jar" "$BACKUP_FILE"
           
             # Keep track of the backup file
@@ -237,3 +237,35 @@ jobs:
                -d "chat_id=${TELEGRAM_CHAT_ID}" \
                -d "text=${FAILURE_MSG}" \
                -d "parse_mode=Markdown"
+
+cleanup:
+  runs-on: self-hosted
+  needs: build-and-deploy
+  if: always()
+
+  steps:
+    - name: Cleanup old backups
+      run: |
+        # Always run cleanup regardless of deployment success or failure
+        echo "Cleaning up old backups..."
+        
+        # Count existing backups
+        BACKUP_COUNT=$(ls -1 $DEPLOY_DIR/${APP_NAME}_backup_*.war 2>/dev/null | wc -l)
+        
+        if [ "$BACKUP_COUNT" -gt "$MAX_BACKUPS" ]; then
+          # Calculate how many to remove
+          REMOVE_COUNT=$((BACKUP_COUNT - MAX_BACKUPS))
+        
+          # Find the oldest backups and remove them
+          ls -1t $DEPLOY_DIR/${APP_NAME}_backup_*.war | tail -n $REMOVE_COUNT | xargs rm -f
+        
+          echo "Removed $REMOVE_COUNT old backup(s), keeping the $MAX_BACKUPS most recent"
+        else
+          echo "Found $BACKUP_COUNT backup(s), no cleanup needed (keeping max $MAX_BACKUPS)"
+        fi
+    - name: Clean build artifacts
+      run: |
+        # Free up disk space by cleaning old builds
+        find $GITHUB_WORKSPACE -name "*.war" -delete || true
+        ./gradlew clean || true
+        echo "Cleaned up build artifacts"
