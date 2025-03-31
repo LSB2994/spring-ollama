@@ -29,22 +29,26 @@ jobs:
           ./gradlew clean bootJar
           ls -la build/libs/  # Verify JAR file
 
-      - name: Deploy new JAR
+      - name: Setup SSH
         run: |
-          mkdir -p ${{ env.DEPLOY_DIR }}
-          scp build/libs/*.jar lsb@172.27.184.67:${{ env.DEPLOY_DIR }}
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan 172.27.184.67 >> ~/.ssh/known_hosts  # Add remote host to known hosts to prevent SSH prompt
 
-      - name: Start Application
+      - name: Copy JAR to server
         run: |
-          # Stop any existing instance
+          scp build/libs/*.jar lsb@172.27.184.67:/home/lsb/spring-ollama
+
+      - name: Start Application on Server
+        run: |
           ssh lsb@172.27.184.67 << 'EOF'
-          pkill -f "java -jar ${{ env.DEPLOY_DIR }}/*.jar" || true
-          sleep 2
-          
-          # Start new instance with debug info
-          cd ${{ env.DEPLOY_DIR }}
-          nohup java -jar /*.jar > app.log 2>&1 &
-          echo $! > app.pid  # Save PID
-          sleep 10  # Warm-up time
-      
-
+            # Stop any existing instance of the application
+            pkill -f "java -jar /home/lsb/spring-ollama/*.jar" || true
+            sleep 2
+            
+            # Start the new instance of the application
+            nohup java -jar /home/lsb/spring-ollama/*.jar > /home/lsb/spring-ollama/app.log 2>&1 &
+            echo $! > /home/lsb/spring-ollama/app.pid  # Save PID
+            sleep 10  # Warm-up time
+          EOF
