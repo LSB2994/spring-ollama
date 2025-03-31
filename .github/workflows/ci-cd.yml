@@ -118,7 +118,7 @@ jobs:
           cd $DEPLOY_DIR
           
           # Start the application
-          nohup java -jar $DEPLOY_DIR/*.jar > app.log 2>&1 &
+          java -jar $DEPLOY_DIR/*.jar > app.log 2>&1 &
           echo $! > app.pid  # Save PID
           sleep 10  # Warm-up time
 
