@@ -121,7 +121,7 @@ jobs:
           MAX_RETRIES=10
           RETRY_INTERVAL=5
           # Check the health endpoint
-          HEALTH_URL="http://$SERVER_HOST:8080/actuator/health"
+          HEALTH_URL="http://$SERVER_HOST:9090/actuator/health"
           echo "Checking health endpoint at $HEALTH_URL"
           for (( i=1; i<=6; i++ )); do
             HEALTH_STATUS=$(curl -s -o health_response.txt -w "%{http_code}" "$HEALTH_URL" || echo "000")
@@ -149,6 +149,13 @@ jobs:
           fi
           echo "::warning::Health check failed after multiple attempts"
           echo "success=false" >> $GITHUB_OUTPUT
+      
+      - name: Debug Outputs
+        run: |
+          echo "Health Check Success: ${{ steps.verify.outputs.success }}"
+          echo "Backup File: ${{ steps.backup.outputs.backup_file }}"
+          echo "Has Backup: ${{ steps.backup.outputs.has_backup }}"
+
       - name: Send success notification
         if: success() && steps.verify.outputs.success == 'true'
         run: |
@@ -207,6 +214,13 @@ jobs:
           else
             echo "Backup file not found or not accessible"
           fi
+
+      - name: Debug Backup
+        run: |
+          echo "Backup File: ${{ steps.backup.outputs.backup_file }}"
+          echo "Has Backup: ${{ steps.backup.outputs.has_backup }}"
+    
+
       - name: Failure without rollback notification
         if: (failure() || steps.verify.outputs.success == 'false') && steps.backup.outputs.has_backup != 'true'
         run: |
