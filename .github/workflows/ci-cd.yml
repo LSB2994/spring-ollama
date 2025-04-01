@@ -178,7 +178,7 @@ jobs:
             BRANCH=${GITHUB_REF#refs/heads/}
             VERSION="${{ steps.find-jar.outputs.version }}"
             DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-            APP_URL="http://${SERVER_HOST}:8080/${APP_NAME}/swagger-ui/index.html#"
+            APP_URL="http://${SERVER_HOST}:9090/${APP_NAME}/swagger-ui/index.html#"
             BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           
             # Create success message
