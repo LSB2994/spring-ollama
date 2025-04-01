@@ -51,20 +51,24 @@ jobs:
                -d "text=${MESSAGE}" \
                -d "parse_mode=Markdown" \
                -d "disable_web_page_preview=true"
+
       - name: Set up environment
         run: |
           echo "JAVA_HOME=/usr/lib/jvm/java-${{ env.JAVA_VERSION }}-openjdk-amd64" >> $GITHUB_ENV
           echo "TIMESTAMP=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_ENV
           echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+
       - name: Determine environment
         id: env
         run: |
           echo "DEPLOY_ENV=development" >> $GITHUB_ENV
+
       - name: Build application
         run: |
           chmod +x ./gradlew
           ./gradlew build -x test
           ls -la build/libs/  # Verify .jar file creation
+
       - name: Find JAR file
         id: find-jar
         run: |
@@ -78,25 +82,33 @@ jobs:
           # Save the build version for later
           VERSION=$(echo $JAR_FILE | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "unknown")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Create backup directory
         run: |
           mkdir -p $DEPLOY_DIR
           echo "Created backup directory at $DEPLOY_DIR"
+
       - name: Backup existing deployment
         run: |
           if [ -f "$DEPLOY_DIR/$APP_NAME.jar" ]; then
-            # Create backup with timestamp
             BACKUP_FILE="$DEPLOY_DIR/${APP_NAME}_backup_$TIMESTAMP.jar"
+            echo "Backup file will be created at: $BACKUP_FILE"
             sudo cp "$DEPLOY_DIR/$APP_NAME.jar" "$BACKUP_FILE"
-          
-            # Keep track of the backup file
+            echo "Backup file created at: $BACKUP_FILE"
             echo "backup_file=$BACKUP_FILE" >> $GITHUB_OUTPUT
             echo "has_backup=true" >> $GITHUB_OUTPUT
-            echo "Backed up current JAR to $BACKUP_FILE"
           else
             echo "No existing JAR file to backup"
             echo "has_backup=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Debug Backup
+        run: |
+          echo "Backup File: ${{ steps.backup.outputs.backup_file }}"
+          echo "Has Backup: ${{ steps.backup.outputs.has_backup }}"
+          echo "Current deploy directory content:"
+          ls -l $DEPLOY_DIR  # Log directory contents for debugging
+
       - name: Deploy to Server
         run: |
           # Create deployment directory
@@ -114,6 +126,7 @@ jobs:
           nohup java -jar $DEPLOY_DIR/*.jar > app.log 2>&1 &
           echo $! > app.pid  # Save PID
           sleep 10  # Warm-up time
+
       - name: Verify deployment
         id: verify
         run: |
@@ -214,12 +227,6 @@ jobs:
           else
             echo "Backup file not found or not accessible"
           fi
-
-      - name: Debug Backup
-        run: |
-          echo "Backup File: ${{ steps.backup.outputs.backup_file }}"
-          echo "Has Backup: ${{ steps.backup.outputs.has_backup }}"
-    
 
       - name: Failure without rollback notification
         if: (failure() || steps.verify.outputs.success == 'false') && steps.backup.outputs.has_backup != 'true'
