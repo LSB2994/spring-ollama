@@ -125,9 +125,16 @@ jobs:
           cd $DEPLOY_DIR
           
           # Start the application
-          nohup java -jar $DEPLOY_DIR/*.jar > app.log 2>&1 &
+          nohup java -jar $DEPLOY_DIR/*.jar > $DEPLOY_DIR/app.log 2>&1 &
           echo $! > app.pid  # Save PID
           sleep 10  # Warm-up time
+          
+          # Check if app.log was created
+          if [ -f "$DEPLOY_DIR/app.log" ]; then
+            echo "app.log was created successfully"
+          else
+            echo "Failed to create app.log"
+          fi
 
       - name: Verify deployment
         id: verify
