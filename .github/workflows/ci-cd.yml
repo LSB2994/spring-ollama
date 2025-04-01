@@ -15,7 +15,7 @@ env:
   DEPLOY_DIR: "/home/lsb/spring-ollama" # Where to deploy on server
   SERVER_HOST: "172.27.184.67"
   TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}  # Fixed typo from TELEGRAM_TO
+  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_TO }}
 
 jobs:
   build-and-deploy:
@@ -27,35 +27,44 @@ jobs:
 
       - name: Send deployment start notification
         run: |
+          # Get branch, commit and author info
           BRANCH=${GITHUB_REF#refs/heads/}
           COMMIT_MSG=$(git log -1 --pretty=%B)
           COMMIT_AUTHOR=$(git log -1 --pretty=%an)
           BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          
+          # Set your local timezone (change Asia/Phnom_Penh to your actual timezone)
           export TZ="Asia/Phnom_Penh"
-          MESSAGE="🚀 *HRMS DEPLOYMENT STARTED*%0A%0A"
+          
+          # Prepare the message with proper formatting
+          MESSAGE="🚀 *LLAMA DEPLOYMENT STARTED*%0A%0A"
           MESSAGE+="*Branch:* \`${BRANCH}\`%0A"
           MESSAGE+="*Commit:* \`${COMMIT_MSG}\`%0A"
           MESSAGE+="*Author:* ${COMMIT_AUTHOR}%0A"
           MESSAGE+="*Build:* [View Details](${BUILD_URL})%0A"
           MESSAGE+="*Started at:* $(date '+%Y-%m-%d %H:%M:%S')%0A%0A"
           MESSAGE+="_Deployment in progress..._"
+          
+          # Send message to Telegram group
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
                -d "chat_id=${TELEGRAM_CHAT_ID}" \
                -d "text=${MESSAGE}" \
                -d "parse_mode=Markdown" \
                -d "disable_web_page_preview=true"
-
       - name: Set up environment
         run: |
           echo "JAVA_HOME=/usr/lib/jvm/java-${{ env.JAVA_VERSION }}-openjdk-amd64" >> $GITHUB_ENV
           echo "TIMESTAMP=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_ENV
           echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
-
+      - name: Determine environment
+        id: env
+        run: |
+          echo "DEPLOY_ENV=development" >> $GITHUB_ENV
       - name: Build application
         run: |
           chmod +x ./gradlew
           ./gradlew build -x test
-
+          ls -la build/libs/  # Verify .jar file creation
       - name: Find JAR file
         id: find-jar
         run: |
@@ -66,19 +75,21 @@ jobs:
           fi
           echo "jar_file=$JAR_FILE" >> $GITHUB_OUTPUT
           echo "Found JAR file: $JAR_FILE"
+          # Save the build version for later
           VERSION=$(echo $JAR_FILE | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "unknown")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Create backup directory
         run: |
-          mkdir -p DEPLOY_DIR
+          mkdir -p $DEPLOY_DIR
           echo "Created backup directory at $DEPLOY_DIR"
-
       - name: Backup existing deployment
         run: |
           if [ -f "$DEPLOY_DIR/$APP_NAME.jar" ]; then
+            # Create backup with timestamp
             BACKUP_FILE="$DEPLOY_DIR/${APP_NAME}_backup_$TIMESTAMP.jar"
-            sudo /bin/cp "$DEPLOY_DIR/$APP_NAME.jar" "$BACKUP_FILE"
+            sudo cp "$DEPLOY_DIR/$APP_NAME.jar" "$BACKUP_FILE"
+          
+            # Keep track of the backup file
             echo "backup_file=$BACKUP_FILE" >> $GITHUB_OUTPUT
             echo "has_backup=true" >> $GITHUB_OUTPUT
             echo "Backed up current JAR to $BACKUP_FILE"
@@ -86,30 +97,36 @@ jobs:
             echo "No existing JAR file to backup"
             echo "has_backup=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: Deploy to server
+      - name: Deploy to Server
         run: |
-          # Stop the running Spring Boot app (if any)
-          sudo systemctl stop spring-ollama || true
+          # Create deployment directory
+          mkdir -p $DEPLOY_DIR
           
-          # Copy new JAR file to the deployment directory
-          sudo /bin/cp ${{ steps.find-jar.outputs.jar_file }} $DEPLOY_DIR/$APP_NAME.jar
-          echo "JAR file deployed to $DEPLOY_DIR/$APP_NAME.jar"
+          # Stop any running instance of the application
+          pkill -f "java -jar $DEPLOY_DIR/*.jar" || true
+          sleep 2
+          
+          # Deploy the new .jar file
+          cp ${{ steps.find-jar.outputs.jar_file }} $DEPLOY_DIR/
+          cd $DEPLOY_DIR
           
           # Start the application
-          sudo systemctl start spring-ollama
-          echo "Started Spring Boot application"
-
+          nohup java -jar $DEPLOY_DIR/*.jar > app.log 2>&1 &
+          echo $! > app.pid  # Save PID
+          sleep 10  # Warm-up time
       - name: Verify deployment
         id: verify
         run: |
-          echo "Waiting for deployment to initialize..."
-          sleep 10
+          echo "Waiting for application to initialize..."
+          MAX_RETRIES=10
+          RETRY_INTERVAL=5
+          # Check the health endpoint
           HEALTH_URL="http://$SERVER_HOST:8080/actuator/health"
           echo "Checking health endpoint at $HEALTH_URL"
           for (( i=1; i<=6; i++ )); do
             HEALTH_STATUS=$(curl -s -o health_response.txt -w "%{http_code}" "$HEALTH_URL" || echo "000")
             if [ "$HEALTH_STATUS" == "200" ]; then
+              # Parse the response to see if status is UP
               APP_STATUS=$(grep -o '"status":"[^"]*"' health_response.txt | cut -d'"' -f4)
               if [ "$APP_STATUS" == "UP" ]; then
                 echo "✅ Application health check successful - Status: UP"
@@ -124,67 +141,100 @@ jobs:
               sleep 10
             fi
           done
+          # If we reach here, the health check failed
           if [ -f health_response.txt ]; then
+            echo "Last health check response:"
             cat health_response.txt
             rm health_response.txt
           fi
           echo "::warning::Health check failed after multiple attempts"
           echo "success=false" >> $GITHUB_OUTPUT
-
       - name: Send success notification
         if: success() && steps.verify.outputs.success == 'true'
         run: |
-          export TZ="Asia/Phnom_Penh"
-          BRANCH=${GITHUB_REF#refs/heads/}
-          VERSION="${{ steps.find-jar.outputs.version }}"
-          DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-          APP_URL="http://${SERVER_HOST}:8080/swagger-ui/index.html#"
-          BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          MESSAGE="✅ *HRMS DEPLOYMENT SUCCESSFUL*%0A%0A"
-          MESSAGE+="*Branch:* \`${BRANCH}\`%0A"
-          MESSAGE+="*Version:* \`${VERSION}\`%0A"
-          MESSAGE+="*Environment:* \`${BRANCH}\`%0A"
-          MESSAGE+="*Deployed at:* ${DEPLOY_TIME}%0A"
-          MESSAGE+="*Application URL:* [Open App](${APP_URL})%0A"
-          MESSAGE+="*Build Details:* [View Log](${BUILD_URL})%0A%0A"
-          MESSAGE+="✨ _Deployment completed successfully!_"
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-               -d "chat_id=${TELEGRAM_CHAT_ID}" \
-               -d "text=${MESSAGE}" \
-               -d "parse_mode=Markdown" \
-               -d "disable_web_page_preview=true"
-
+          # Get deployment information
+            export TZ="Asia/Phnom_Penh"
+          
+            BRANCH=${GITHUB_REF#refs/heads/}
+            VERSION="${{ steps.find-jar.outputs.version }}"
+            DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+            APP_URL="http://${SERVER_HOST}:8080/${APP_NAME}/swagger-ui/index.html#"
+            BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          
+            # Create success message
+            MESSAGE="✅ *LLAMA DEPLOYMENT SUCCESSFUL*%0A%0A"
+            MESSAGE+="*Branch:* \`${BRANCH}\`%0A"
+            MESSAGE+="*Version:* \`${VERSION}\`%0A"
+            MESSAGE+="*Environment:* \`${BRANCH}\`%0A"
+            MESSAGE+="*Deployed at:* ${DEPLOY_TIME}%0A"
+            MESSAGE+="*Application URL:* [Open App](${APP_URL})%0A"
+            MESSAGE+="*Build Details:* [View Log](${BUILD_URL})%0A%0A"
+            MESSAGE+="✨ _Deployment completed successfully!_"
+          
+            # Send notification to Telegram group
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+              -d "chat_id=${TELEGRAM_CHAT_ID}" \
+              -d "text=${MESSAGE}" \
+              -d "parse_mode=Markdown" \
+              -d "disable_web_page_preview=true"
       - name: Rollback on failure
         if: (failure() || steps.verify.outputs.success == 'false') && steps.backup.outputs.has_backup == 'true'
         run: |
+          echo "Deployment failed. Attempting rollback..."
+          export TZ="Asia/Phnom_Penh"
+          
           BACKUP_FILE="${{ steps.backup.outputs.backup_file }}"
+          
           if [ -f "$BACKUP_FILE" ]; then
-            sudo /bin/cp "$BACKUP_FILE" "$DEPLOY_DIR/$APP_NAME.jar"
-            sudo systemctl start spring-ollama
+            # Perform rollback
+            rm -f $DEPLOY_DIR/$APP_NAME.jar
+            cp "$BACKUP_FILE" $DEPLOY_DIR/$APP_NAME.jar
+            pkill -f "java -jar $DEPLOY_DIR/*.jar" || true
+            nohup java -jar $DEPLOY_DIR/*.jar > app.log 2>&1 &
+          
             echo "Rolled back to previous version"
+          
+            # Send rollback notification
+            ROLLBACK_MSG="🔄 *AUTOMATIC ROLLBACK PERFORMED*%0A%0A"
+            ROLLBACK_MSG+="*Branch:* \`${BRANCH}\`%0A"
+            ROLLBACK_MSG+="*Rollback time:* $(date '+%Y-%m-%d %H:%M:%S')%0A"
+            ROLLBACK_MSG+="*Info:* Deployment failed, rolled back to previous version%0A"
+          
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+                 -d "chat_id=${TELEGRAM_CHAT_ID}" \
+                 -d "text=${ROLLBACK_MSG}" \
+                 -d "parse_mode=Markdown"
           else
             echo "Backup file not found or not accessible"
           fi
-
-  cleanup:
-    runs-on: self-hosted
-    needs: build-and-deploy
-    if: always()
-
-    steps:
-      - name: Cleanup old backups
+      - name: Failure without rollback notification
+        if: (failure() || steps.verify.outputs.success == 'false') && steps.backup.outputs.has_backup != 'true'
         run: |
-          BACKUP_COUNT=$(ls -1 $DEPLOY_DIR/${APP_NAME}_backup_*.jar 2>/dev/null | wc -l)
-          if [ "$BACKUP_COUNT" -gt "$MAX_BACKUPS" ]; then
-            REMOVE_COUNT=$((BACKUP_COUNT - MAX_BACKUPS))
-            ls -1t $DEPLOY_DIR/${APP_NAME}_backup_*.jar | tail -n $REMOVE_COUNT | xargs rm -f
-            echo "Removed $REMOVE_COUNT old backup(s), keeping the $MAX_BACKUPS most recent"
+          echo "Deployment failed, no backup found. Manual intervention required."
+          FAILURE_MSG="❌ *LLAMA DEPLOYMENT FAILED*%0A%0A"
+          FAILURE_MSG+="*Branch:* \`${BRANCH}\`%0A"
+          FAILURE_MSG+="*Failure time:* $(date '+%Y-%m-%d %H:%M:%S')%0A"
+          FAILURE_MSG+="*Info:* Deployment failed, no backup available for rollback%0A"
+          
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+               -d "chat_id=${TELEGRAM_CHAT_ID}" \
+               -d "text=${FAILURE_MSG}" \
+               -d "parse_mode=Markdown"
+      - name: Cleanup orphan processes
+        run: |
+          # Find all orphan Java processes related to the application and terminate them
+          echo "Searching for orphan Java processes..."
+          # List orphan java processes (excluding the current one)
+          ORPHAN_PIDS=$(ps aux | grep 'java -jar $DEPLOY_DIR/*.jar' | grep -v $$ | awk '{print $2}')
+          # If orphan PIDs are found, terminate them
+          if [ -n "$ORPHAN_PIDS" ]; then
+            echo "Terminating orphan processes: $ORPHAN_PIDS"
+            for pid in $ORPHAN_PIDS; do
+              kill -9 $pid || echo "Failed to terminate process $pid"
+            done
           else
-            echo "Found $BACKUP_COUNT backup(s), no cleanup needed (keeping max $MAX_BACKUPS)"
+            echo "No orphan processes found"
           fi
-
-      - name: Clean build artifacts
-        run: |
-          find $GITHUB_WORKSPACE -name "*.jar" -delete || true
-          ./gradlew clean || true
-          echo "Cleaned up build artifacts"
+          # Clean up any temporary files or logs you don't need
+          echo "Cleaning up temporary log files..."
+          rm -f $DEPLOY_DIR/app.log
