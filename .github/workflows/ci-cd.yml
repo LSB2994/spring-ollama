@@ -143,7 +143,7 @@ jobs:
           MAX_RETRIES=10
           RETRY_INTERVAL=5
           # Check the health endpoint
-          HEALTH_URL="http://$SERVER_HOST:8080/actuator/health"
+          HEALTH_URL="http://$SERVER_HOST:9090/actuator/health"
           echo "Checking health endpoint at $HEALTH_URL"
           for (( i=1; i<=6; i++ )); do
             HEALTH_STATUS=$(curl -s -o health_response.txt -w "%{http_code}" "$HEALTH_URL" || echo "000")
@@ -187,7 +187,7 @@ jobs:
             BRANCH=${GITHUB_REF#refs/heads/}
             VERSION="${{ steps.find-jar.outputs.version }}"
             DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-            APP_URL="http://${SERVER_HOST}:8080/swagger-ui/index.html#"
+            APP_URL="http://${SERVER_HOST}:9090/swagger-ui/index.html#"
             BUILD_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           
             # Create success message
