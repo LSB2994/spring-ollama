@@ -18,6 +18,7 @@ execute_ssh_command() {
 echo "Uploading JAR file..."
 sshpass -p "$SSH_PASSWORD" scp -P $SSH_PORT -o StrictHostKeyChecking=no "$LOCAL_JAR_PATH" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}"
 
+# shellcheck disable=SC2181
 if [ $? -ne 0 ]; then
     echo "Error uploading file. Exiting."
     exit 1
